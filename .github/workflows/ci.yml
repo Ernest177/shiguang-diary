@@ -8,38 +8,54 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     name: ${{ matrix.os }} / Python ${{ matrix.python }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 10
+    # 为运行环境的准备和收尾留出余量；检查步骤仍有各自的超时限制。
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        # 固定 Ubuntu 版本，避免 latest 标签迁移时检查环境随之改变。
+        os: [ubuntu-24.04, windows-latest]
         python: ['3.10', '3.12']
     steps:
       - uses: actions/checkout@v7
+        timeout-minutes: 3
         with:
           persist-credentials: false
       - uses: actions/setup-python@v7
+        timeout-minutes: 3
         with:
           python-version: ${{ matrix.python }}
       - name: Check repository contents
+        timeout-minutes: 1
         run: python tools/audit_repository.py
       - name: Check Python syntax
+        timeout-minutes: 1
         run: python -m compileall -q app tests tools evals
       - name: Check JavaScript syntax
+        timeout-minutes: 1
         run: |
           node --check web/app.js
           node --check web/about.js
       - name: Run system scenario checks
+        timeout-minutes: 3
         run: python -m unittest discover -s tests -v
       - name: Check personal archive rendering contracts
+        timeout-minutes: 1
         run: node tests/test_about_ui.js
       - name: Compare offline contracts with reviewed baseline (no model calls)
+        timeout-minutes: 2
         run: python -m evals.run --baseline evals/baselines/contract-v1.json
       - name: Check personal archive evidence and uncertainty contracts
+        timeout-minutes: 2
         run: python -m evals.about_contract
       - name: Validate isolated synthetic demo
+        timeout-minutes: 2
         run: python tools/create_demo.py
