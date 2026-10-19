@@ -296,10 +296,24 @@ const sectionNames = {
   actions: "行动与进展",
   opportunities: "值得做的事",
 };
-function summaryHTML(summary) {
+function summaryHTML(summary, scope = "panel") {
   const data = summary.data;
   if (!data) return "";
-  return `<div class="summary-content">${summary.stale ? '<div class="notice">记录发生了变化，以下是上次整理，正在等待更新。</div>' : ""}<p>${escapeHTML(data.overview)}</p>${data.sections.map((section) => `<section class="summary-section"><h4>${sectionNames[section.category]}</h4><ul>${section.items.map((item) => `<li>${escapeHTML(item.text)}<div>${item.sources.map((source) => sourceButton(source, "依据")).join("")}</div></li>`).join("")}</ul></section>`).join("")}<div class="summary-updated">${escapeHTML(timeAt(summary.updated_at, true))} 更新 · ${escapeHTML(summary.model)}</div></div>`;
+  const previous = $(`[data-summary-scope="${scope}"]`);
+  const expanded = new Set(previous?.dataset.summaryDay === state.day
+    ? $$("details[open]", previous).map((el) => el.dataset.summaryDisclosure) : []);
+  const sources = new Map();
+  for (const section of data.sections) for (const item of section.items) for (const source of item.sources) {
+    if (!sources.has(source.entry_id)) sources.set(source.entry_id, { ...source, quotes: new Set() });
+    sources.get(source.entry_id).quotes.add(source.quote);
+  }
+  const itemsHTML = (items) => `<ul>${items.map((item) => `<li>${escapeHTML(item.text)}</li>`).join("")}</ul>`;
+  const sections = data.sections.map((section) => {
+    const compact = section.category === "insights" && section.items.length > 2;
+    return `<section class="summary-section"><h4>${sectionNames[section.category]}</h4>${itemsHTML(compact ? section.items.slice(0, 2) : section.items)}${compact ? `<details class="summary-more" data-summary-disclosure="insights-more" ${expanded.has("insights-more") ? "open" : ""}><summary>其余 ${section.items.length - 2} 条</summary>${itemsHTML(section.items.slice(2))}</details>` : ""}</section>`;
+  }).join("");
+  const evidence = sources.size ? `<details class="summary-evidence" data-summary-disclosure="sources" ${expanded.has("sources") ? "open" : ""}><summary>查看原文依据</summary>${[...sources.values()].map((source, i) => `<div class="summary-source">${sourceButton(source, sources.size === 1 ? "打开这条日记" : `打开日记 ${i + 1}`)}${[...source.quotes].map((quote) => `<blockquote>${escapeHTML(quote)}</blockquote>`).join("")}</div>`).join("")}</details>` : "";
+  return `<div class="summary-content" data-summary-scope="${scope}" data-summary-day="${escapeHTML(state.day)}">${summary.stale ? '<div class="notice">记录发生了变化，以下是上次整理，正在等待更新。</div>' : ""}<p>${escapeHTML(data.overview)}</p>${sections}${evidence}<div class="summary-updated">${escapeHTML(timeAt(summary.updated_at, true))} 更新 · ${escapeHTML(summary.model)}</div></div>`;
 }
 function aiOffHTML() {
   return `<div class="summary-off"><div class="sparkle-orbit">${icon("sparkles")}</div><h3>让思绪，慢慢清晰</h3><p>连接你选择的 AI，帮你整理日记里的发现、待办和灵感。原文始终为你保留。</p><button class="secondary-button panel-button" data-view="settings">设置智能整理 ${icon("arrow-up-right")}</button><div class="panel-meta">${icon("shield")}由你决定使用本地或云端服务</div></div>`;
@@ -342,7 +356,7 @@ function renderReview() {
     a.sources.some((s) => s.journal_day === state.day),
   );
   $("#review-view").innerHTML =
-    `<div class="view-header"><div class="eyebrow">A DAY, REVISITED</div><h1 class="view-title">${escapeHTML(displayDate(state.day, { month: "long", day: "numeric" }))}，回头看看</h1><p class="view-description">重要的经历、想法和决定，在这里连成一天的轮廓。</p></div><div class="review-stats"><div><strong>${count}</strong><span>留下的片段</span></div><div><strong>${actions.filter((a) => a.kind === "task" && a.status === "open").length}</strong><span>待跟进的行动</span></div><div><strong>${actions.filter((a) => a.kind === "opportunity" && a.status === "open").length}</strong><span>值得探索的事</span></div></div>${summary.data ? `<div class="review-box">${summaryHTML(summary)}</div><div class="setting-actions"><button class="text-button" data-retry-day="true">重新整理这一天 ↗</button></div>` : count ? summaryPending(summary) : empty("还没有这一天的回顾", "先写下一个片段，日子的轮廓会逐渐清晰。", "leaf")}`;
+    `<div class="view-header"><div class="eyebrow">A DAY, REVISITED</div><h1 class="view-title">${escapeHTML(displayDate(state.day, { month: "long", day: "numeric" }))}，回头看看</h1><p class="view-description">重要的经历、想法和决定，在这里连成一天的轮廓。</p></div><div class="review-stats"><div><strong>${count}</strong><span>留下的片段</span></div><div><strong>${actions.filter((a) => a.kind === "task" && a.status === "open").length}</strong><span>待跟进的行动</span></div><div><strong>${actions.filter((a) => a.kind === "opportunity" && a.status === "open").length}</strong><span>值得探索的事</span></div></div>${summary.data ? `<div class="review-box">${summaryHTML(summary, "review")}</div><div class="setting-actions"><button class="text-button" data-retry-day="true">重新整理这一天 ↗</button></div>` : count ? summaryPending(summary) : empty("还没有这一天的回顾", "先写下一个片段，日子的轮廓会逐渐清晰。", "leaf")}`;
 }
 
 function actionDeadline(a) {
