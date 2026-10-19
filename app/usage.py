@@ -19,7 +19,7 @@ from app.store import tzinfo
 
 CALL_SCOPE = ContextVar("diary_call_scope", default={})
 PRICE_SOURCE = "https://help.aliyun.com/zh/model-studio/model-pricing"
-KINDS = {"entry": "单条整理", "day": "每日回顾", "memory": "长期记忆", "portrait": "个人画像", "month": "月度回顾", "test": "连接测试", "other": "其他请求"}
+KINDS = {"entry": "单条整理", "day": "每日回顾", "memory": "长期记忆", "growth": "成长片段", "portrait": "个人画像", "month": "月度回顾", "test": "连接测试", "other": "其他请求"}
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS prices(
  provider TEXT NOT NULL,model TEXT NOT NULL,input_rate TEXT NOT NULL,output_rate TEXT NOT NULL,
@@ -200,6 +200,17 @@ class UsageLedger:
         except (ValueError, TypeError, OverflowError):
             raise ValueError("请选择有效月份") from None
         return " WHERE started_at>=? AND started_at<?", [start.astimezone(timezone.utc).isoformat(timespec="milliseconds"), end.astimezone(timezone.utc).isoformat(timespec="milliseconds")]
+
+    def growth_usage(self, settings):
+        local = datetime.now(tzinfo(settings["timezone"]))
+        where, args = self.bounds(local.strftime("%Y-%m"), settings["timezone"])
+        start = local.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc).isoformat(timespec="milliseconds")
+        with self.connection() as db:
+            rows = db.execute("SELECT started_at,estimated_cost,status FROM calls" + where +
+                              " AND kind IN ('growth','portrait','month')", args).fetchall()
+        cost = sum((Decimal(r["estimated_cost"]) for r in rows if r["estimated_cost"] is not None), Decimal(0))
+        return {"today_calls": sum(r["started_at"] >= start for r in rows), "month_cost": format(cost, ".8f"),
+                "unknown_cost": sum(r["estimated_cost"] is None for r in rows), "priced": bool(self.price(settings))}
 
     def state(self, settings, month, offset=0, limit=50):
         if not isinstance(offset, int) or not 0 <= offset <= 1000000:

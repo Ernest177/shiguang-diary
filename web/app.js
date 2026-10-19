@@ -282,7 +282,7 @@ function renderEntries() {
     <div class="entry-top"><span class="entry-time">${escapeHTML(timeAt(entry.created_at, state.query.length > 0))}</span>${entry.revision > 1 ? '<span class="entry-tag">已编辑</span>' : ""}${state.query ? `<span class="entry-tag">${escapeHTML(entry.journal_day)}</span>` : ""}<div class="entry-menu"><button class="icon-button" data-history="${escapeHTML(entry.id)}" aria-label="查看记录历史">${icon("history")}</button><button class="icon-button" data-edit="${escapeHTML(entry.id)}" aria-label="编辑记录">${icon("edit")}</button><button class="icon-button" data-delete="${escapeHTML(entry.id)}" aria-label="删除记录">${icon("trash")}</button></div></div>
     <p class="entry-body">${escapeHTML(entry.body)}</p>
     ${entry.analysis ? `<details class="analysis-details"><summary>AI 整理 · ${escapeHTML(entry.analysis.summary)}</summary>${entry.analysis.insights.map((item) => `<div class="insight-line">${item.type === "idea" ? "想法 · " : ""}${escapeHTML(item.text)}<div class="evidence">“${escapeHTML(item.quote)}”</div></div>`).join("")}${entry.analysis.actions.map((a) => `<div class="insight-line">${{ task: "待办", opportunity: "值得做", question: "待澄清" }[a.kind]} · ${escapeHTML(a.title)}<div class="evidence">“${escapeHTML(a.quote)}”</div></div>`).join("")}</details>` : ""}
-    <div class="entry-bottom"><span class="status-label ${entry.analysis_error ? "error" : ""}" title="${escapeHTML(entry.analysis_error || "")}">${icon(entry.analysis ? "sparkles" : "lock")}${escapeHTML(statusText(entry))}</span><span>·</span><span>${entry.body.length.toLocaleString()} 字</span>${entry.ai_enabled ? `<button class="retry-button" data-memory-permission="${escapeHTML(entry.id)}">${entry.memory_enabled ? "已用于长期记忆 · 排除" : "用于长期记忆"}</button>` : ""}${entry.ai_enabled && state.settings.ai_mode !== "off" ? `<button class="retry-button" data-retry="${escapeHTML(entry.id)}">${entry.analysis ? "重新整理" : "重试整理"}</button>` : ""}</div>
+    <div class="entry-bottom"><span class="status-label ${entry.analysis_error ? "error" : ""}" title="${escapeHTML(entry.analysis_error || "")}">${icon(entry.analysis ? "sparkles" : "lock")}${escapeHTML(statusText(entry))}</span><span>·</span><span>${entry.body.length.toLocaleString()} 字</span>${entry.ai_enabled ? `<button class="retry-button" data-memory-permission="${escapeHTML(entry.id)}">${entry.memory_enabled ? "已纳入成长记录 · 排除" : "纳入成长记录"}</button>` : ""}${entry.ai_enabled && state.settings.ai_mode !== "off" ? `<button class="retry-button" data-retry="${escapeHTML(entry.id)}">${entry.analysis ? "重新整理" : "重试整理"}</button>` : ""}</div>
     ${entry.analysis_error && state.settings.ai_mode !== "off" ? `<div class="notice error">${escapeHTML(entry.analysis_error)}</div>` : ""}
   </article>`,
     )
@@ -981,6 +981,7 @@ async function init() {
 }
 init();
 setInterval(() => {
+  if (state.view === "about" && document.activeElement?.closest("#timeline-search")) return;
   if (state.view === "usage") {
     if (!document.hidden && !modal.open && !$("#usage-pricing")?.open)
       loadUsage({ silent: true });

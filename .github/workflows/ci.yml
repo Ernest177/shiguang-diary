@@ -60,6 +60,9 @@ jobs:
       - name: Check concise review rendering contracts
         timeout-minutes: 1
         run: node tests/test_summary_ui.js
+      - name: Check incremental growth archive rendering contracts
+        timeout-minutes: 1
+        run: node tests/test_growth_ui.js
       - name: Compare offline contracts with reviewed baseline (no model calls)
         timeout-minutes: 2
         run: python -m evals.run --baseline evals/baselines/contract-v1.json

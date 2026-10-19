@@ -101,6 +101,10 @@ def execute_about(worker, job, settings):
     store, kind, target = worker.store, job["kind"], job["target"]
     context_fn = (lambda db=None: store.month_context(target, db)) if kind == "month" else store.portrait_context if kind == "portrait" else store.memory_context
     context, before = context_fn()
+    with store.connection() as db:
+        cached = db.execute("SELECT signature FROM personal_reports WHERE kind=? AND target=?", (kind, target)).fetchone()
+        if cached and cached[0] == before:
+            return
     if not (context.get("memories") if kind == "portrait" else context.get("records")):
         return
     if len(encode(context)) > 120000:
@@ -113,6 +117,12 @@ def execute_about(worker, job, settings):
         _, after = context_fn(db)
         if before != after or not db.execute("SELECT 1 FROM jobs WHERE id=?", (job["id"],)).fetchone():
             return
+        if kind == "month":
+            originals = {r["id"]: r["body"] for r in store.about_records(db)}
+            if any(s["quote"] not in originals.get(s["record_id"], "") for item in result["items"] for s in item["sources"]):
+                raise AIError("月度回顾引用跨越了不同原文片段，请缩短引用后重试")
+        if context.get("scope"):
+            result["scope"] = context["scope"]
         if kind == "memory":
             records = {r["id"]: r for r in context["records"]}
             protected = [m for m in store.memories(db) if m["user_modified"]]

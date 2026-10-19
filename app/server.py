@@ -165,7 +165,11 @@ class Handler(BaseHTTPRequestHandler):
                 rows = [dict(r) for r in db.execute("SELECT * FROM entry_versions WHERE entry_id=? ORDER BY revision DESC", (query.get("id"),))]
             return self.send({"versions": rows})
         if path == "/api/about":
-            return self.send(store.about_state(query.get("month", store.today()[:7])))
+            result = store.about_state(query.get("month", store.today()[:7]))
+            result["growth"]["usage"] = self.app.usage.growth_usage(store.settings())
+            return self.send(result)
+        if path == "/api/growth/timeline":
+            return self.send(store.timeline(query.get("q", ""), query.get("kind", "all"), int(query.get("offset", "0"))))
         if path == "/api/usage":
             result = self.app.usage.state(store.settings(), query.get("month", store.today()[:7]), int(query.get("offset", "0")))
             with store.connection() as db:
@@ -240,6 +244,9 @@ class Handler(BaseHTTPRequestHandler):
             if store.settings()["ai_mode"] == "off":
                 raise ValueError("请先在偏好与设置中启用 AI")
             store.request_about(data.get("kind"), data.get("target", "current"))
+        elif path == "/api/growth/policy":
+            result = {"policy": store.set_growth_policy(data)}
+            mutated = True
         elif path == "/api/actions/undo":
             store.undo_action(data.get("history_id"))
             mutated = True

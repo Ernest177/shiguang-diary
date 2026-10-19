@@ -288,8 +288,13 @@ class Worker:
         self.thread.start()
 
     def run(self):
+        next_scan = 0
         while not self.stop.wait(1):
             try:
+                if time.monotonic() >= next_scan:
+                    with self.store.connection() as db:
+                        self.store.schedule_growth(db)
+                    next_scan = time.monotonic() + 30
                 self.step()
             except Exception:
                 # Never log diary text, payloads, responses or credentials.
@@ -298,11 +303,32 @@ class Worker:
     def step(self):
         store = self.store
         with store.connection() as db:
-            job = db.execute("SELECT * FROM jobs WHERE status='queued' AND (retry_at IS NULL OR retry_at<=?) ORDER BY CASE kind WHEN 'entry' THEN 0 ELSE 1 END,updated_at LIMIT 1", (now(),)).fetchone()
+            job = db.execute("""SELECT * FROM jobs WHERE status IN ('queued','deferred') AND (retry_at IS NULL OR retry_at<=?)
+               ORDER BY CASE kind WHEN 'entry' THEN 0 WHEN 'day' THEN 1 WHEN 'portrait' THEN 2 WHEN 'growth' THEN 3 ELSE 4 END,updated_at LIMIT 1""", (now(),)).fetchone()
             if not job:
                 return False
             job = dict(job)
             settings = store.settings(db)
+            if settings["growth_enabled"] and job["kind"] in ("growth", "portrait", "month"):
+                reason = "自动积累已暂停" if settings["growth_paused"] else ""
+                ledger = getattr(self.client, "ledger", None)
+                if not reason and ledger:
+                    from decimal import Decimal
+                    usage = ledger.growth_usage(settings)
+                    if usage["today_calls"] >= settings["growth_daily_calls"]:
+                        reason = "已到今日额外请求上限，明天继续"
+                    elif job["kind"] == "growth" and usage["today_calls"] >= settings["growth_daily_calls"] - 1 and db.execute(
+                            "SELECT 1 FROM jobs WHERE kind='portrait' AND status='queued'").fetchone():
+                        reason = "今日保留一次请求更新画像，余下历史明天接续"
+                    elif Decimal(usage["month_cost"]) >= Decimal(settings["growth_monthly_budget"]):
+                        reason = "已到本月参考预算，调整预算或下月继续"
+                    elif settings["ai_mode"] == "cloud" and not usage["priced"]:
+                        reason = "当前模型未设置单价，请在 AI 用量中设置后继续"
+                if reason:
+                    tomorrow = (datetime.now(tzinfo(settings["timezone"])) + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc).isoformat(timespec="milliseconds")
+                    kinds = ("growth",) if reason.startswith("今日保留") else ("growth", "portrait", "month")
+                    db.execute("UPDATE jobs SET status='deferred',error=?,retry_at=? WHERE status IN ('queued','deferred') AND kind IN (" + ",".join("?" for _ in kinds) + ")", (reason, tomorrow, *kinds))
+                    return True
             if settings["ai_mode"] == "off":
                 db.execute("UPDATE jobs SET status='waiting',error='请在设置中配置 AI 服务' WHERE id=?", (job["id"],))
                 return True
@@ -314,6 +340,9 @@ class Worker:
                 elif job["kind"] in ("memory", "portrait", "month"):
                     from app.about_ai import execute_about
                     execute_about(self, job, settings)
+                elif job["kind"] == "growth":
+                    from app.growth import execute_growth
+                    execute_growth(self, job, settings)
                 else:
                     self.analyze_day(job, settings)
             with store.connection() as db:
@@ -328,7 +357,7 @@ class Worker:
             retry_at = (datetime.now(timezone.utc) + timedelta(seconds=10 * attempts)).isoformat(timespec="milliseconds")
             with store.connection() as db:
                 db.execute("UPDATE jobs SET status=?,error=?,retry_at=?,updated_at=? WHERE id=?",
-                           ("failed" if attempts >= (1 if job["kind"] in ("memory", "portrait", "month") else 3) else "queued", message[:300], retry_at, now(), job["id"]))
+                           ("failed" if attempts >= (1 if job["kind"] in ("memory", "portrait", "month", "growth") else 3) else "queued", message[:300], retry_at, now(), job["id"]))
         return True
 
     def analyze_entry(self, job, settings):
@@ -343,7 +372,21 @@ class Worker:
         existing = [a for a in store.actions() if a["sources"] and all(s["entry_id"] in enabled_ids for s in a["sources"])][:100]
         context = {"entry": entry, "creation_local_date": datetime.fromisoformat(entry["created_at"]).astimezone(tzinfo(entry["timezone"])).date().isoformat(),
                    "existing_actions": [{k: a[k] for k in ("id", "title", "kind", "status")} for a in existing]}
-        result = validate_entry(self.client.call(settings, ENTRY_PROMPT, context), entry, existing)
+        growth_record = None
+        if settings["growth_enabled"] and not settings["growth_paused"]:
+            with store.connection() as db:
+                growth_record = store.growth_record("entry:" + entry["id"], db)
+            if growth_record:
+                context.update({"growth_enabled": True, "growth_record_id": growth_record["id"]})
+        raw = self.client.call(settings, ENTRY_PROMPT, context)
+        result = validate_entry(raw, entry, existing)
+        growth_result, growth_error = None, None
+        if growth_record:
+            from app.growth import validate_growth
+            try:
+                growth_result = validate_growth(raw.get("growth"), growth_record)
+            except AIError as exc:
+                growth_error = str(exc)
         with store.connection() as db:
             current = db.execute("SELECT revision,ai_enabled FROM entries WHERE id=?", (entry["id"],)).fetchone()
             ticket = db.execute("SELECT 1 FROM jobs WHERE id=?", (job["id"],)).fetchone()
@@ -375,6 +418,17 @@ class Worker:
                     for source_day in db.execute("SELECT DISTINCT e.journal_day FROM entries e JOIN action_sources s ON e.id=s.entry_id WHERE s.action_id=?", (action["id"],)).fetchall():
                         store.enqueue(db, "day", source_day[0])
             store.enqueue(db, "day", entry["journal_day"])
+            if growth_record:
+                from app.growth import record_hash
+                latest = store.growth_record(growth_record["id"], db)
+                if latest and record_hash(latest) == record_hash(growth_record) and store.settings(db)["growth_enabled"] and not store.settings(db)["growth_paused"]:
+                    if growth_result:
+                        # One ordinary request covered the entire entry, including a long entry.
+                        store.save_growth_chunk(db, growth_record, growth_result, settings["ai_model"], 0, 1)
+                        db.execute("DELETE FROM jobs WHERE kind='growth' AND target=?", (growth_record["id"],))
+                    elif growth_error:
+                        store.enqueue(db, "growth", growth_record["id"], entry["revision"])
+                        db.execute("UPDATE jobs SET status='failed',error=? WHERE kind='growth' AND target=?", (growth_error, growth_record["id"]))
 
     def analyze_day(self, job, settings):
         store = self.store

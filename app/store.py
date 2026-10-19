@@ -12,6 +12,7 @@ from datetime import datetime, timezone, timedelta, date
 from pathlib import Path
 
 from app.about import ABOUT_SCHEMA, ABOUT_TABLES, AboutMixin
+from app.growth import GROWTH_SCHEMA, GROWTH_TABLES, GROWTH_DEFAULTS, GrowthMixin
 
 
 def now():
@@ -75,14 +76,14 @@ CREATE TABLE IF NOT EXISTS jobs(
  id TEXT PRIMARY KEY,kind TEXT NOT NULL,target TEXT NOT NULL,revision INTEGER NOT NULL,
  status TEXT NOT NULL,attempts INTEGER NOT NULL DEFAULT 0,error TEXT,
  retry_at TEXT,updated_at TEXT NOT NULL,UNIQUE(kind,target));
-""" + ABOUT_SCHEMA + "\nPRAGMA user_version=2;\n"
+""" + ABOUT_SCHEMA + GROWTH_SCHEMA + "\nPRAGMA user_version=3;\n"
 
 DEFAULTS = {"timezone": "Asia/Shanghai", "ai_mode": "off", "ai_base_url": "",
             "ai_model": "", "cloud_consent": False, "backup_keep": 30,
-            "backup_dir": "", "last_backup_at": "", "backup_error": ""}
+            "backup_dir": "", "last_backup_at": "", "backup_error": "", **GROWTH_DEFAULTS}
 
 
-class Store(AboutMixin):
+class Store(GrowthMixin, AboutMixin):
     def __init__(self, directory):
         self.directory = Path(directory).resolve()
         self.directory.mkdir(parents=True, exist_ok=True)
@@ -90,12 +91,12 @@ class Store(AboutMixin):
         self.lock = threading.RLock()
         with self.connection() as db:
             version = db.execute("PRAGMA user_version").fetchone()[0]
-            if version > 2:
+            if version > 3:
                 raise RuntimeError("数据库来自更新的应用版本，请使用较新程序打开")
-            if version == 1:
+            if version in (1, 2):
                 folder = self.directory / "upgrade-backups"
                 folder.mkdir(exist_ok=True)
-                snapshot = folder / ("before-v2-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ") + ".sqlite3")
+                snapshot = folder / ("before-v3-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ") + ".sqlite3")
                 with contextlib.closing(sqlite3.connect(snapshot)) as target:
                     db.backup(target)
                     if target.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
@@ -103,8 +104,9 @@ class Store(AboutMixin):
             db.executescript("BEGIN IMMEDIATE;\n" + SCHEMA + "\nCOMMIT;")
             for k, v in DEFAULTS.items():
                 db.execute("INSERT OR IGNORE INTO settings VALUES(?,?)", (k, compact(v)))
-            db.execute("UPDATE jobs SET status='failed',error='整理期间服务已重启，请确认后手动重试' WHERE status='running' AND kind IN ('memory','portrait','month')")
+            db.execute("UPDATE jobs SET status='failed',error='整理期间服务已重启，请手动重试，避免重复计费' WHERE status='running' AND kind IN ('memory','portrait','month','growth')")
             db.execute("UPDATE jobs SET status='queued' WHERE status='running'")
+            self.schedule_growth(db)
 
     @contextlib.contextmanager
     def connection(self):
@@ -126,12 +128,12 @@ class Store(AboutMixin):
         return {r["key"]: json.loads(r["value"]) for r in db.execute("SELECT * FROM settings")}
 
     def save_settings(self, values):
-        allowed = set(DEFAULTS) - {"last_backup_at", "backup_error"}
+        allowed = set(DEFAULTS) - {"last_backup_at", "backup_error"} - set(GROWTH_DEFAULTS)
         with self.connection() as db:
             for k, v in values.items():
                 if k in allowed:
                     db.execute("INSERT OR REPLACE INTO settings VALUES(?,?)", (k, compact(v)))
-            db.execute("UPDATE jobs SET status='queued',attempts=0,retry_at=NULL,error=NULL WHERE status IN ('waiting','failed')")
+            db.execute("UPDATE jobs SET status='queued',attempts=0,retry_at=NULL,error=NULL WHERE status='waiting' OR (status='failed' AND kind IN ('entry','day'))")
 
     @staticmethod
     def enqueue(db, kind, target, revision=0):
@@ -226,6 +228,8 @@ class Store(AboutMixin):
             for r in db.execute(sql, args):
                 item = dict(r)
                 item["analysis"] = json.loads(item["analysis"]) if item["analysis"] else None
+                if self.settings(db)["growth_enabled"]:
+                    item["memory_enabled"] = int(bool(item["ai_enabled"]) and not db.execute("SELECT 1 FROM memory_exclusions WHERE entry_id=?", (item["id"],)).fetchone())
                 result.append(item)
             return result
 
@@ -323,14 +327,16 @@ class Store(AboutMixin):
     def export(self):
         with self.connection() as db:
             tables = {table: [dict(r) for r in db.execute("SELECT * FROM " + table)] for table in
-                      ("entries", "entry_versions", "analyses", "actions", "action_sources", "action_history", "daily_summaries") + ABOUT_TABLES}
-            return {"format": "shiguang-diary", "schema_version": 2, "exported_at": now(), "tables": tables,
+                      ("entries", "entry_versions", "analyses", "actions", "action_sources", "action_history", "daily_summaries") + ABOUT_TABLES + GROWTH_TABLES}
+            if self.settings(db)["growth_enabled"]:
+                tables["memory_permissions"] = [{"entry_id": r["id"].split(":", 1)[1]} for r in self.about_records(db) if r["type"] == "entry"]
+            return {"format": "shiguang-diary", "schema_version": 3, "exported_at": now(), "tables": tables,
                     "preferences": {k: v for k, v in self.settings(db).items() if k in ("timezone", "backup_keep")}}
 
     def validate_import(self, data):
         data = self.normalize_bundle(data)
         tables = data.get("tables")
-        expected = ("entries", "entry_versions", "analyses", "actions", "action_sources", "action_history", "daily_summaries") + ABOUT_TABLES
+        expected = ("entries", "entry_versions", "analyses", "actions", "action_sources", "action_history", "daily_summaries") + ABOUT_TABLES + GROWTH_TABLES
         if not isinstance(tables, dict) or set(tables) != set(expected):
             raise ValueError("备份表结构不完整")
         # Validate in a scratch database: real constraints, types and references must hold.
@@ -393,6 +399,7 @@ class Store(AboutMixin):
                 json.loads(h["before_data"])
                 json.loads(h["after_data"])
             self.validate_about_import(tables)
+            self.validate_growth_import(tables)
         except (sqlite3.Error, TypeError, KeyError, AttributeError, UnboundLocalError) as exc:
             raise ValueError("备份数据损坏或关联不完整") from exc
         finally:
@@ -418,7 +425,7 @@ class Store(AboutMixin):
         tables = data["tables"]
         with self.connection() as db:
             if replace:
-                for table in ("personal_reports", "memory_suppressions", "memory_sources", "memories", "memory_permissions", "experiences",
+                for table in ("growth_receipts", "memory_exclusions", "personal_reports", "memory_suppressions", "memory_sources", "memories", "memory_permissions", "experiences",
                               "jobs", "daily_summaries", "action_history", "action_sources", "actions", "analyses", "entry_versions", "entries"):
                     db.execute("DELETE FROM " + table)
             # Merge deliberately preserves local conflicts, including task user overrides.
@@ -448,13 +455,17 @@ class Store(AboutMixin):
                     db.execute("INSERT OR IGNORE INTO " + table + "(" + ",".join(columns) + ") VALUES(" + ",".join("?" for _ in columns) + ")", list(row.values()))
             skipped_experiences = {r[0] for r in db.execute("SELECT id FROM experiences")}
             memory_map = {}
-            for table in ABOUT_TABLES:
+            for table in ABOUT_TABLES + GROWTH_TABLES:
                 if table == "personal_reports":
                     continue  # Recompute derived reports against the restored/merged context.
                 for original in tables[table]:
                     row = dict(original)
-                    if table == "memory_permissions" and row["entry_id"] in skip_ids:
+                    if table in ("memory_permissions", "memory_exclusions") and row["entry_id"] in skip_ids:
                         continue
+                    if table == "growth_receipts":
+                        source_type, source_id = row["record_id"].split(":", 1)
+                        if source_id in (skip_ids if source_type == "entry" else skipped_experiences):
+                            continue
                     if table == "memories":
                         current = db.execute("SELECT id FROM memories WHERE id=? OR fingerprint=? ORDER BY id=? DESC LIMIT 1", (row["id"], row["fingerprint"], row["id"])).fetchone()
                         memory_map[row["id"]] = current[0] if current else row["id"]
@@ -483,6 +494,7 @@ class Store(AboutMixin):
                 self.enqueue(db, "entry", r["id"], r["revision"])
             for r in db.execute("SELECT DISTINCT journal_day FROM entries").fetchall():
                 self.enqueue(db, "day", r[0])
+            self.schedule_growth(db)
         return preview
 
     def backup(self, force=False, label="auto"):
@@ -536,12 +548,19 @@ class Store(AboutMixin):
             if source.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
                 raise ValueError("备份未通过完整性检查")
             version = source.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (1, 2):
+            if version not in (1, 2, 3):
                 raise ValueError("备份来自不支持的数据版本")
             names = tuple(self.export()["tables"])
             if version == 1:
-                names = tuple(t for t in names if t not in ABOUT_TABLES)
+                names = tuple(t for t in names if t not in ABOUT_TABLES + GROWTH_TABLES)
+            elif version == 2:
+                names = tuple(t for t in names if t not in GROWTH_TABLES)
             bundle = {"format": "shiguang-diary", "schema_version": version, "tables": {t: [dict(r) for r in source.execute("SELECT * FROM " + t)] for t in names}}
+            if version == 3:
+                auto = source.execute("SELECT value FROM settings WHERE key='growth_enabled'").fetchone()
+                if auto and json.loads(auto[0]):
+                    bundle["tables"]["memory_permissions"] = [{"entry_id": r[0]} for r in source.execute(
+                        "SELECT id FROM entries WHERE ai_enabled=1 AND NOT EXISTS(SELECT 1 FROM memory_exclusions x WHERE x.entry_id=entries.id)")]
             return self.import_data(bundle, replace=True)
         finally:
             source.close()

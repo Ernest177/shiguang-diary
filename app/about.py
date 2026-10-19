@@ -73,12 +73,22 @@ def field(value, limit, optional=False):
 
 class AboutMixin:
     def invalidate_about(self, db, source_type=None, identifier=None):
+        affected = True
         if source_type:
             column = {"entry": "entry_id", "experience": "experience_id"}[source_type]
+            affected = bool(db.execute("SELECT 1 FROM memory_sources WHERE " + column + "=? LIMIT 1", (identifier,)).fetchone())
             db.execute("DELETE FROM memories WHERE id IN (SELECT memory_id FROM memory_sources WHERE " + column + "=?)", (identifier,))
             db.execute("DELETE FROM memories WHERE NOT EXISTS(SELECT 1 FROM memory_sources s WHERE s.memory_id=memories.id)")
-        db.execute("DELETE FROM personal_reports")
-        db.execute("DELETE FROM jobs WHERE kind IN ('memory','portrait','month')")
+            record_id = source_type + ":" + identifier
+            db.execute("DELETE FROM growth_receipts WHERE record_id=?", (record_id,))
+            db.execute("DELETE FROM jobs WHERE kind='growth' AND target=?", (record_id,))
+        if source_type and self.settings(db).get("growth_enabled") and not affected:
+            # An unrelated/private/new source cannot change an existing portrait.
+            db.execute("DELETE FROM personal_reports WHERE kind!='portrait'")
+            db.execute("DELETE FROM jobs WHERE kind IN ('memory','month')")
+        else:
+            db.execute("DELETE FROM personal_reports")
+            db.execute("DELETE FROM jobs WHERE kind IN ('memory','portrait','month')")
 
     def save_experience(self, payload):
         title = field(payload.get("title"), 160)
@@ -111,12 +121,14 @@ class AboutMixin:
               ai_enabled=excluded.ai_enabled,revision=excluded.revision,updated_at=excluded.updated_at""",
                        (identifier, title, period, chapter, body, enabled, old["revision"] + 1 if old else 1,
                         old["created_at"] if old else updated, updated))
+            self.schedule_growth(db)
             return dict(db.execute("SELECT * FROM experiences WHERE id=?", (identifier,)).fetchone())
 
     def delete_experience(self, identifier):
         with self.connection() as db:
             self.invalidate_about(db, "experience", identifier)
             db.execute("DELETE FROM experiences WHERE id=?", (identifier,))
+            self.schedule_portrait(db)
 
     def set_memory_permission(self, identifier, enabled):
         if not isinstance(enabled, bool):
@@ -130,12 +142,19 @@ class AboutMixin:
             self.invalidate_about(db, "entry", identifier)
             if enabled:
                 db.execute("INSERT OR IGNORE INTO memory_permissions VALUES(?)", (identifier,))
+                db.execute("DELETE FROM memory_exclusions WHERE entry_id=?", (identifier,))
             else:
                 db.execute("DELETE FROM memory_permissions WHERE entry_id=?", (identifier,))
+                db.execute("INSERT OR IGNORE INTO memory_exclusions VALUES(?)", (identifier,))
+            self.schedule_growth(db)
+            self.schedule_portrait(db)
 
     def about_records(self, db):
         records = []
-        for row in db.execute("SELECT e.* FROM entries e JOIN memory_permissions p ON p.entry_id=e.id WHERE e.ai_enabled=1 ORDER BY e.id"):
+        automatic = self.settings(db).get("growth_enabled", False)
+        for row in db.execute("""SELECT e.* FROM entries e WHERE e.ai_enabled=1 AND
+          ((?=1 AND NOT EXISTS(SELECT 1 FROM memory_exclusions x WHERE x.entry_id=e.id)) OR
+           (?=0 AND EXISTS(SELECT 1 FROM memory_permissions p WHERE p.entry_id=e.id))) ORDER BY e.id""", (automatic, automatic)):
             records.append({"id": "entry:" + row["id"], "type": "entry", "body": row["body"], "revision": row["revision"],
                             "period": row["journal_day"], "title": row["journal_day"] + "的日记"})
         for row in db.execute("SELECT * FROM experiences WHERE ai_enabled=1 ORDER BY id"):
@@ -192,6 +211,7 @@ class AboutMixin:
                 updated = (datetime.fromisoformat(row["updated_at"]) + timedelta(milliseconds=1)).isoformat(timespec="milliseconds")
             db.execute("UPDATE memories SET status=?,correction=?,user_modified=1,updated_at=? WHERE id=?",
                        (status, correction, updated, identifier))
+            self.schedule_portrait(db)
 
     def forget_memory(self, identifier):
         with self.connection() as db:
@@ -204,6 +224,7 @@ class AboutMixin:
             db.execute("INSERT OR REPLACE INTO memory_suppressions VALUES(?,?)", (memory["fingerprint"], encode(hashes)))
             self.invalidate_about(db)
             db.execute("DELETE FROM memories WHERE id=?", (identifier,))
+            self.schedule_portrait(db)
 
     def portrait_context(self, db=None):
         if db is None:
@@ -214,6 +235,21 @@ class AboutMixin:
                                  "detail": m["correction"] if m["status"] == "corrected" else m["detail"],
                                  "category": m["category"], "horizon": m["horizon"], "period": m["period"],
                                  "status": m["status"], "sources": m["sources"]} for m in self.memories(db)]}
+        if self.settings(db).get("growth_enabled"):
+            # Fixed-size, deterministic mixture: corrections, recent changes and older context.
+            values = context["memories"]
+            chosen = [m for m in values if m["status"] != "pending"][:8]
+            candidates = values[:12] + values[-8:] + values[::max(1, len(values) // 8)]
+            for memory in candidates:
+                if memory not in chosen and len(chosen) < 24:
+                    chosen.append(memory)
+            bounded = []
+            for memory in chosen:
+                item = {k: v for k, v in memory.items() if k != "sources"}
+                if len(encode(bounded + [item])) <= 24000:
+                    bounded.append(item)
+            context["memories"] = bounded
+            context["scope"] = {"included": len(bounded), "available": len(values), "note": "当前线索节选，不代表全部经历；不要声称完整了解用户"}
         return context, signature(context)
 
     def month_context(self, month, db=None):
@@ -224,10 +260,33 @@ class AboutMixin:
         year, number = map(int, month.split("-"))
         previous = f"{year - (number == 1):04d}-{12 if number == 1 else number - 1:02d}"
         records = [r for r in self.about_records(db) if r["period"][:7] in (month, previous)]
+        coverage = None
+        if self.settings(db).get("growth_enabled"):
+            selected = []
+            receipts = {r["record_id"]: dict(r) for r in db.execute("SELECT * FROM growth_receipts")}
+            for period in (month, previous):
+                eligible = []
+                for record in records:
+                    receipt = receipts.get(record["id"])
+                    if record["period"][:7] != period or not self.receipt_current(record, receipt):
+                        continue
+                    parts = json.loads(receipt["data"])["chunks"]
+                    quotes = list(dict.fromkeys([e["quote"] for c in parts for e in c["events"]] +
+                                      [s["quote"] for c in parts for m in c["memories"] for s in m["sources"]]))
+                    if quotes:
+                        eligible.append({**record, "body": "\n…\n".join(quotes[:3])[:1600]})
+                eligible.sort(key=lambda r: (r["period"], r["id"]))
+                if len(eligible) > 10:
+                    eligible = [eligible[round(i * (len(eligible) - 1) / 9)] for i in range(10)]
+                selected.extend(eligible)
+            coverage = {"included": len(selected), "available": len(records), "note": "根据已积累的线索节选回顾，不代表完整月份；未出现不等于没有发生"}
+            records = selected
         ids = {r["id"] for r in records}
         decisions = [{"detail": m["correction"] if m["status"] == "corrected" else m["detail"], "status": m["status"],
                       "sources": [s for s in m["sources"] if s["record_id"] in ids]} for m in self.memories(db) if m["user_modified"] and any(s["record_id"] in ids for s in m["sources"])]
         context = {"month": month, "previous_month": previous, "records": records, "user_decisions": decisions}
+        if coverage:
+            context["scope"] = coverage
         return context, signature(context)
 
     def request_about(self, kind, target="current"):
@@ -236,6 +295,10 @@ class AboutMixin:
         if kind != "month" and target != "current":
             raise ValueError("个人档案目标无效")
         with self.connection() as db:
+            if self.settings(db).get("growth_enabled") and kind == "memory":
+                self.schedule_growth(db, retry_failed=True)
+                self.schedule_portrait(db, immediate=True)
+                return
             context, _ = self.month_context(target, db) if kind == "month" else self.portrait_context(db) if kind == "portrait" else self.memory_context(db)
             if kind == "portrait" and not context["memories"]:
                 raise ValueError("先选择资料并整理长期记忆，再生成画像")
@@ -245,7 +308,13 @@ class AboutMixin:
                 raise ValueError("这个月还没有允许用于长期记忆的资料")
             if len(encode(context)) > 120000:
                 raise ValueError("所选资料较多，请先缩小长期记忆的资料范围")
-            self.enqueue(db, kind, target)
+            _, current = self.month_context(target, db) if kind == "month" else self.portrait_context(db) if kind == "portrait" else self.memory_context(db)
+            cached = db.execute("SELECT signature FROM personal_reports WHERE kind=? AND target=?", (kind, target)).fetchone()
+            if cached and cached[0] == current:
+                return
+            existing = db.execute("SELECT status FROM jobs WHERE kind=? AND target=?", (kind, target)).fetchone()
+            if not existing or existing[0] not in ("queued", "running"):
+                self.enqueue(db, kind, target)
 
     def about_state(self, month):
         with self.connection() as db:
@@ -262,19 +331,24 @@ class AboutMixin:
             for entry in entries:
                 entry["preview"] = entry.pop("body")[:120]
             jobs = [dict(r) for r in db.execute("SELECT kind,target,status,error FROM jobs WHERE kind IN ('memory','portrait','month')")]
-            return {"experiences": [dict(r) for r in db.execute("SELECT * FROM experiences ORDER BY created_at DESC,id")],
+            if self.settings(db).get("growth_enabled"):
+                effective = {r["id"].split(":", 1)[1] for r in context["records"] if r["type"] == "entry"}
+                for entry in entries:
+                    entry["memory_enabled"] = int(entry["id"] in effective)
+            return {"growth": self.growth_status(db), "experiences": [dict(r) for r in db.execute("SELECT * FROM experiences ORDER BY created_at DESC,id")],
                     "memories": self.memories(db), "entries": entries, "reports": reports, "jobs": jobs,
                     "source_count": len(context["records"]), "entry_source_count": sum(r["type"] == "entry" for r in context["records"])}
 
     @staticmethod
     def normalize_bundle(data):
-        if not isinstance(data, dict) or data.get("format") != "shiguang-diary" or data.get("schema_version") not in (1, 2):
-            raise ValueError("不是受支持的拾光日记备份（格式版本 1 或 2）")
+        from app.growth import GROWTH_TABLES
+        if not isinstance(data, dict) or data.get("format") != "shiguang-diary" or data.get("schema_version") not in (1, 2, 3):
+            raise ValueError("不是受支持的拾光日记备份（格式版本 1、2 或 3）")
         base = ("entries", "entry_versions", "analyses", "actions", "action_sources", "action_history", "daily_summaries")
-        expected = set(base + (ABOUT_TABLES if data["schema_version"] == 2 else ()))
+        expected = set(base + (ABOUT_TABLES if data["schema_version"] >= 2 else ()) + (GROWTH_TABLES if data["schema_version"] == 3 else ()))
         if not isinstance(data.get("tables"), dict) or set(data["tables"]) != expected:
             raise ValueError("备份表结构不完整")
-        return {**data, "schema_version": 2, "tables": {**{t: [] for t in ABOUT_TABLES}, **data["tables"]}}
+        return {**data, "schema_version": 3, "tables": {**{t: [] for t in ABOUT_TABLES + GROWTH_TABLES}, **data["tables"]}}
 
     def validate_about_import(self, tables):
         from app.about_ai import validate_portrait, validate_month
@@ -304,7 +378,13 @@ class AboutMixin:
             field(memory["correction"], 3000, memory["status"] != "corrected")
             if not re.fullmatch(r"[0-9a-f]{64}", memory["fingerprint"]):
                 raise ValueError("备份记忆标识无效")
-            if memory["fingerprint"] != fingerprint(memory["category"], memory["title"]):
+            from app.growth import growth_fingerprint
+            refs = [s for s in tables["memory_sources"] if s["memory_id"] == memory["id"]]
+            valid_keys = {fingerprint(memory["category"], memory["title"])}
+            if len(refs) == 1:
+                record_id = "entry:" + refs[0]["entry_id"] if refs[0]["entry_id"] else "experience:" + refs[0]["experience_id"]
+                valid_keys.add(growth_fingerprint(memory["category"], memory["title"], record_id))
+            if memory["fingerprint"] not in valid_keys:
                 raise ValueError("备份记忆标识与内容不一致")
             if memory["horizon"] == "recent" and not memory["period"].strip():
                 raise ValueError("备份近期记忆缺少时间范围")
