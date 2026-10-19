@@ -8,7 +8,7 @@
 
 ![拾光电脑端首页：日期导航、记录入口与每日整理](docs/preview.png)
 
-**给评审者的入口**：[项目复盘](docs/case-study.md) · [架构与数据流](docs/architecture.md) · [迭代与评测](docs/iteration.md) · [版本记录](CHANGELOG.md) · [路线图](ROADMAP.md) · [验证依据](docs/verification.md) · [简历与面试素材](docs/interview-guide.md)
+**产品文档**：[设计思路](docs/case-study.md) · [架构与数据流](docs/architecture.md) · [迭代与评测](docs/iteration.md) · [版本记录](CHANGELOG.md) · [路线图](ROADMAP.md) · [验证依据](docs/verification.md)
 
 ## 为什么做这个项目
 
