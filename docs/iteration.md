@@ -31,6 +31,10 @@ python -m evals.run --mode live --allow-cloud --base-url "https://YOUR-HOST/comp
 
 报告默认在被 Git 忽略的 `.eval-results/`，同名 JSON 供比较，Markdown 供阅读；每次生成独立文件，不覆盖旧报告。需要保存基线时，先人工审核报告，再将选定 JSON **复制**到自己的基线目录。不要把未经审阅的报告直接加入公开仓库。
 
+从 v1.4.1 起，真实评测与生产请求共用 `context.v1` 输入转换：原文保持不变，省去重复派生内容并临时缩短结构化 ID。报告分别保留 `wire_output`（模型实际响应）和 `output`（还原真实来源编号后的内容），评分使用后者；未知编号不会自动补成有效来源。请求选项记录上下文协议版本，避免遗漏输入处理差异。
+
+`python tools/check_request_costs.py` 只使用脚本内的六条合成记录，对比序列化输入字符数，不读取日记、不调用模型。配合自动检查中的真实客户端调用次数，可验证成本优化机制；字符数不是 Token，实际价格与语义质量仍要用真实评测核对。
+
 ```powershell
 # 替换为两次实际生成的完整报告路径
 python -m evals.compare .eval-results/BASELINE.json .eval-results/CANDIDATE.json

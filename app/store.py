@@ -161,6 +161,8 @@ class Store(GrowthMixin, AboutMixin):
                 return dict(previous)
             if previous and payload.get("revision") != previous["revision"]:
                 raise ValueError("记录已在其他窗口更新，请重新打开后编辑")
+            if previous and (previous["body"], previous["journal_day"], bool(previous["ai_enabled"])) == (body.strip(), day, enabled):
+                return dict(previous)
             identifier = previous["id"] if previous else payload.get("id", uid())
             if not isinstance(identifier, str) or len(identifier) > 80:
                 raise ValueError("无效的记录编号")
@@ -296,7 +298,7 @@ class Store(GrowthMixin, AboutMixin):
         ids = {e["id"] for e in records}
         actions = [a for a in self.actions() if any(s["entry_id"] in ids for s in a["sources"])]
         context = {"day": day, "records": [{k: e[k] for k in ("id", "body", "revision", "created_at", "timezone", "analysis")} for e in records],
-                   "actions": [{k: a[k] for k in ("id", "title", "kind", "status", "sources")} for a in actions]}
+                   "actions": [{k: a[k] for k in ("id", "title", "kind", "status", "due_text", "due_date", "sources")} for a in actions]}
         signature = hashlib.sha256(compact(context).encode()).hexdigest()
         return context, signature
 
@@ -313,16 +315,29 @@ class Store(GrowthMixin, AboutMixin):
             result["error"] = job["error"] if job else None
             return result
 
-    def retry(self, entry_id=None, day=None):
+    def retry(self, entry_id=None, day=None, force=True):
+        if not isinstance(force, bool):
+            raise ValueError("请使用有效的重新生成选项")
         with self.connection() as db:
             if entry_id:
                 row = db.execute("SELECT * FROM entries WHERE id=?", (entry_id,)).fetchone()
                 if not row or not row["ai_enabled"]:
                     raise ValueError("该记录不存在或已排除 AI 分析")
+                if force:
+                    cached = db.execute("SELECT data FROM analyses WHERE entry_id=?", (entry_id,)).fetchone()
+                    if cached:
+                        value = json.loads(cached[0]); value.pop("_cache", None)
+                        db.execute("UPDATE analyses SET data=? WHERE entry_id=?", (compact(value), entry_id))
                 self.enqueue(db, "entry", entry_id, row["revision"])
                 self.enqueue(db, "day", row["journal_day"])
             if day:
                 self.enqueue(db, "day", day_valid(day))
+                db.execute("UPDATE jobs SET retry_at=? WHERE kind='day' AND target=?", (now(), day))
+                if force:
+                    cached = db.execute("SELECT data FROM daily_summaries WHERE day=?", (day,)).fetchone()
+                    if cached:
+                        value = json.loads(cached[0]); value.pop("_cache", None)
+                        db.execute("UPDATE daily_summaries SET data=? WHERE day=?", (compact(value), day))
 
     def export(self):
         with self.connection() as db:

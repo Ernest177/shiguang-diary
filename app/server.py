@@ -33,7 +33,7 @@ class Application:
         self.keys = KeyStore(self.store.directory)
         self.usage = UsageLedger(self.store.directory)
         self.client = ModelClient(self.keys, self.usage)
-        self.worker = Worker(self.store, self.client)
+        self.worker = Worker(self.store, self.client, recap_delay=30)
         self.token = secrets.token_urlsafe(40)
 
     def public_settings(self):
@@ -251,7 +251,7 @@ class Handler(BaseHTTPRequestHandler):
             store.undo_action(data.get("history_id"))
             mutated = True
         elif path == "/api/retry":
-            store.retry(data.get("entry_id"), data.get("day"))
+            store.retry(data.get("entry_id"), data.get("day"), data.get("force", True))
         elif path == "/api/settings":
             values = self.app.settings_input(data)
             previous = store.settings()

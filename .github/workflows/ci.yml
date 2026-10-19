@@ -63,6 +63,9 @@ jobs:
       - name: Check incremental growth archive rendering contracts
         timeout-minutes: 1
         run: node tests/test_growth_ui.js
+      - name: Check synthetic request-size reduction (no model calls)
+        timeout-minutes: 1
+        run: python tools/check_request_costs.py
       - name: Compare offline contracts with reviewed baseline (no model calls)
         timeout-minutes: 2
         run: python -m evals.run --baseline evals/baselines/contract-v1.json

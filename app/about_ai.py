@@ -6,6 +6,7 @@ import uuid
 from app.about import encode, fingerprint, source_hash, stamp
 from app.ai import AIError, array, evidence, text
 from app.prompts import MEMORY_PROMPT, PORTRAIT_PROMPT, MONTH_PROMPT, prompt_metadata
+from app.request_context import prepare_request
 
 
 def sources(value, records):
@@ -112,7 +113,8 @@ def execute_about(worker, job, settings):
     prompt = {"memory": MEMORY_PROMPT, "portrait": PORTRAIT_PROMPT, "month": MONTH_PROMPT}[kind]
     validator = {"memory": validate_memories, "portrait": validate_portrait, "month": validate_month}[kind]
     payload = {k: v for k, v in context.items() if k != "suppressed"}
-    result = validator(worker.client.call(settings, prompt, payload), context)
+    payload, decode = prepare_request(kind, payload)
+    result = validator(decode(worker.client.call(settings, prompt, payload)), context)
     with store.connection() as db:
         _, after = context_fn(db)
         if before != after or not db.execute("SELECT 1 FROM jobs WHERE id=?", (job["id"],)).fetchone():

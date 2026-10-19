@@ -19,6 +19,7 @@ from app.store import compact, day_valid, now, uid, tzinfo
 from app.prompts import ENTRY_PROMPT, DAY_PROMPT
 from app.action_dates import duration_deadline
 from app.usage import call_scope, usage_counts
+from app.request_context import prepare_request, receipt_key, cached_result, with_receipt
 
 REQUEST_OPTIONS = {"temperature": 0.2, "stream": False}
 
@@ -279,8 +280,9 @@ def validate_day(data, context):
 
 
 class Worker:
-    def __init__(self, store, client):
+    def __init__(self, store, client, recap_delay=0):
         self.store, self.client = store, client
+        self.recap_delay = recap_delay
         self.stop = threading.Event()
         self.thread = threading.Thread(target=self.run, daemon=True, name="diary-analysis")
 
@@ -332,6 +334,11 @@ class Worker:
             if settings["ai_mode"] == "off":
                 db.execute("UPDATE jobs SET status='waiting',error='请在设置中配置 AI 服务' WHERE id=?", (job["id"],))
                 return True
+            if job["kind"] == "day" and self.recap_delay and job["retry_at"] is None:
+                due = (datetime.fromisoformat(job["updated_at"]) + timedelta(seconds=self.recap_delay)).isoformat(timespec="milliseconds")
+                if due > now():
+                    db.execute("UPDATE jobs SET retry_at=? WHERE id=?", (due, job["id"]))
+                    return True
             db.execute("UPDATE jobs SET status='running',attempts=attempts+1,updated_at=? WHERE id=?", (now(), job["id"]))
         try:
             with call_scope(job["kind"], job["target"], job["id"], job["attempts"] + 1):
@@ -372,13 +379,29 @@ class Worker:
         existing = [a for a in store.actions() if a["sources"] and all(s["entry_id"] in enabled_ids for s in a["sources"])][:100]
         context = {"entry": entry, "creation_local_date": datetime.fromisoformat(entry["created_at"]).astimezone(tzinfo(entry["timezone"])).date().isoformat(),
                    "existing_actions": [{k: a[k] for k in ("id", "title", "kind", "status")} for a in existing]}
+        # Own unmodified outputs are not new input dependencies on a replay.
+        ambient = [a for a in existing if a["user_modified"] or any(s["entry_id"] != entry["id"] for s in a["sources"])]
+        key_context = {**context, "existing_actions": [{k: a[k] for k in ("id", "title", "kind", "status")} for a in ambient]}
+        key = receipt_key("entry", key_context, settings)
+        with store.connection() as db:
+            saved = db.execute("SELECT revision,data FROM analyses WHERE entry_id=?", (entry["id"],)).fetchone()
+        if saved and saved["revision"] == entry["revision"]:
+            previous = json.loads(saved["data"])
+            if cached_result(previous, key):
+                try:
+                    validate_entry(previous, entry, existing)
+                except AIError:
+                    pass
+                else:
+                    return  # Successful write survived a restart or a repeated queue ticket.
         growth_record = None
         if settings["growth_enabled"] and not settings["growth_paused"]:
             with store.connection() as db:
                 growth_record = store.growth_record("entry:" + entry["id"], db)
             if growth_record:
                 context.update({"growth_enabled": True, "growth_record_id": growth_record["id"]})
-        raw = self.client.call(settings, ENTRY_PROMPT, context)
+        payload, decode = prepare_request("entry", context)
+        raw = decode(self.client.call(settings, ENTRY_PROMPT, payload))
         result = validate_entry(raw, entry, existing)
         growth_result, growth_error = None, None
         if growth_record:
@@ -392,7 +415,7 @@ class Worker:
             ticket = db.execute("SELECT 1 FROM jobs WHERE id=?", (job["id"],)).fetchone()
             if not current or current[0] != entry["revision"] or not current[1] or not ticket:
                 return
-            db.execute("INSERT OR REPLACE INTO analyses VALUES(?,?,?,?,?)", (entry["id"], entry["revision"], compact(result), settings["ai_model"], now()))
+            db.execute("INSERT OR REPLACE INTO analyses VALUES(?,?,?,?,?)", (entry["id"], entry["revision"], compact(with_receipt(result, key)), settings["ai_model"], now()))
             for action in result["actions"]:
                 normalized = re.sub(r"[\W_]", "", action["title"].lower())
                 fingerprint = hashlib.sha256((action["kind"] + ":" + normalized).encode()).hexdigest()
@@ -437,12 +460,27 @@ class Worker:
             with store.connection() as db:
                 db.execute("DELETE FROM daily_summaries WHERE day=?", (job["target"],))
             return
+        # Per-entry analysis is derived from the same originals and is not sent twice.
+        key_context = {**context, "records": [{k: v for k, v in r.items() if k != "analysis"} for r in context["records"]]}
+        key = receipt_key("day", key_context, settings)
+        with store.connection() as db:
+            cached = db.execute("SELECT data FROM daily_summaries WHERE day=?", (job["target"],)).fetchone()
+            if cached and cached_result(json.loads(cached[0]), key):
+                try:
+                    validate_day(json.loads(cached[0]), context)
+                except AIError:
+                    pass
+                else:
+                    if db.execute("SELECT 1 FROM jobs WHERE id=?", (job["id"],)).fetchone():
+                        db.execute("UPDATE daily_summaries SET signature=? WHERE day=?", (signature, job["target"]))
+                    return
+        payload, decode = prepare_request("day", context)
         # Bound transmission instead of silently dropping records from a purported full recap.
-        if len(compact(context)) > 120000:
+        if len(compact(payload)) > 120000:
             raise AIError("当天内容较多，超出本版单次整理范围；所有原文仍可查看")
-        result = validate_day(self.client.call(settings, DAY_PROMPT, context), context)
+        result = validate_day(decode(self.client.call(settings, DAY_PROMPT, payload)), context)
         with store.connection() as db:
             _, latest = store.day_context(job["target"])
             if latest != signature or not db.execute("SELECT 1 FROM jobs WHERE id=?", (job["id"],)).fetchone():
                 return
-            db.execute("INSERT OR REPLACE INTO daily_summaries VALUES(?,?,?,?,?)", (job["target"], signature, compact(result), settings["ai_model"], now()))
+            db.execute("INSERT OR REPLACE INTO daily_summaries VALUES(?,?,?,?,?)", (job["target"], signature, compact(with_receipt(result, key)), settings["ai_model"], now()))

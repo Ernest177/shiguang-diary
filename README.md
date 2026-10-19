@@ -110,12 +110,13 @@ flowchart LR
 
 ## 持续迭代与评测
 
-当前版本 **1.4.0** 延续 20 条单条分析 + 4 组每日回顾的公开合成样例与 11 个个人档案的离线合约样例，增加增量缓存、暂停接续、来源撤回、预算限制与成长足迹的回归。分别检查数据流程与模型原始输出，保留不同验证层的边界。
+当前版本 **1.4.1** 延续 20 条单条分析 + 4 组每日回顾的公开合成样例与 11 个个人档案的离线合约样例，增加增量缓存、暂停接续、来源撤回、预算限制、请求合并与输入精简的回归。分别检查数据流程与模型原始输出，保留不同验证层的边界。
 
 ```bash
 # 默认离线，不联网、不读取个人日记，不需要密钥
 python -m evals.run --baseline evals/baselines/contract-v1.json
 python -m evals.about_contract
+python tools/check_request_costs.py
 ```
 
 报告生成到 `.eval-results/`，包括误提 / 漏提 / 误关闭、日期与已有行动关联、引用与来源覆盖。应用、提示词、数据集、评分器和门禁分别记录版本；可拒绝不可比的实验，并逐例检查退步。GitHub Actions 自动执行离线回归。
@@ -132,6 +133,7 @@ app/prompts.py      有版本与哈希登记的提示词
 app/about.py        经历、授权、记忆与失效生命周期
 app/about_ai.py     个人档案模型协议、来源校验与整理任务
 app/growth.py       增量提取、本地缓存、历史分片与成长足迹
+app/request_context.py 输入精简、短编号映射与本地结果回执
 web/                本地 HTML / CSS / JavaScript
 tests/              存储、竞态、恢复与 HTTP 场景
 evals/              合成标注、合约基线、真实评测与比较器

@@ -277,6 +277,7 @@ class GrowthMixin:
 
 def execute_growth(worker, job, settings):
     from app.prompts import GROWTH_PROMPT
+    from app.request_context import prepare_request
     store = worker.store
     with store.connection() as db:
         record = store.growth_record(job["target"], db)
@@ -290,8 +291,8 @@ def execute_growth(worker, job, settings):
         part = {**record, "body": parts[index]}
         decisions = [{"title": m["title"], "detail": m["correction"] if m["status"] == "corrected" else m["detail"]}
                      for m in store.memories(db) if m["user_modified"] and any(s["record_id"] == record["id"] for s in m["sources"])][:6]
-    result = validate_growth(worker.client.call(settings, GROWTH_PROMPT, {"records": [part], "user_decisions": decisions,
-                             "part": index + 1, "parts": len(parts)}), part)
+    payload, decode = prepare_request("growth", {"records": [part], "user_decisions": decisions, "part": index + 1, "parts": len(parts)})
+    result = validate_growth(decode(worker.client.call(settings, GROWTH_PROMPT, payload)), part)
     with store.connection() as db:
         latest = store.growth_record(job["target"], db)
         if not latest or record_hash(latest) != record_hash(record) or not db.execute("SELECT 1 FROM jobs WHERE id=?", (job["id"],)).fetchone():

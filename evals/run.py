@@ -15,6 +15,7 @@ import uuid
 from app import __version__
 from app.ai import ModelClient, REQUEST_OPTIONS, validate_config
 from app.prompts import ENTRY_PROMPT, DAY_PROMPT, prompt_metadata
+from app.request_context import CONTEXT_VERSION, prepare_request
 from evals.scoring import SCORER_VERSION, aggregate, gate, score_case
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -70,18 +71,22 @@ def evaluate(mode="contract", settings=None, key="", case_ids=None):
         output = None
         error = None
         metadata = {}
+        wire_output = None
         try:
             if mode == "contract":
                 output = fixtures[case["id"]]
             else:
                 prompt = ENTRY_PROMPT if case["kind"] == "entry" else DAY_PROMPT
-                output, metadata = client.call_with_metadata(settings, prompt, case["input"])
+                payload, decode = prepare_request(case["kind"], case["input"])
+                wire_output, metadata = client.call_with_metadata(settings, prompt, payload)
+                output = decode(wire_output)
         except Exception as exc:
             # Exception types only. Never persist provider error bodies or credentials.
             error = type(exc).__name__
         elapsed = round((time.perf_counter() - started) * 1000, 2) if mode == "live" else None
         samples.append({"id": case["id"], "kind": case["kind"], "tags": case["tags"],
                         "error": error, "latency_ms": elapsed, "provider": metadata,
+                        "wire_output": wire_output,
                         "output": output, "score": score_case(case, output)})
     metrics = aggregate(samples)
     latencies = sorted(s["latency_ms"] for s in samples if s["latency_ms"] is not None)
@@ -101,7 +106,7 @@ def evaluate(mode="contract", settings=None, key="", case_ids=None):
             "scorer_version": SCORER_VERSION, "gate_version": GATE_VERSION,
             "selected_ids": [c["id"] for c in selected],
             "model": settings["ai_model"] if mode == "live" else "handwritten-contract-fixture",
-            "request_options": {**REQUEST_OPTIONS, "response_format": None, "enable_thinking": None},
+            "request_options": {**REQUEST_OPTIONS, "response_format": None, "enable_thinking": None, "context_version": CONTEXT_VERSION},
             "metrics": metrics, "gate": gate(metrics),
             "performance": {"latency_samples": len(latencies),
                             "p50_ms": latencies[(len(latencies) - 1) // 2] if latencies else None,

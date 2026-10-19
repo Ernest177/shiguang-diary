@@ -324,7 +324,7 @@ function summaryPending(summary) {
     return `<div class="notice error">${escapeHTML(summary.error || "整理未完成，原文已保存。")}</div><button class="secondary-button" data-retry-day="true">重新整理 ${icon("refresh")}</button>`;
   if (summary.status === "empty")
     return '<p class="panel-description">留下一些片段之后，这里会慢慢长出一天的轮廓。</p>';
-  return `<div class="summary-off"><div class="sparkle-orbit">${icon("sparkles")}</div><h3>${summary.status === "running" ? "正在整理这一天" : "等待整理"}</h3><p>${escapeHTML(summary.error || "你的原文已保存。整理会在后台完成，可以继续记录。")}</p><button class="text-button" data-retry-day="true">重试整理 ↗</button></div>`;
+  return `<div class="summary-off"><div class="sparkle-orbit">${icon("sparkles")}</div><h3>${summary.status === "running" ? "正在整理这一天" : "等待整理"}</h3><p>${escapeHTML(summary.error || (summary.status === "running" ? "正在后台整理，你可以继续记录。" : "原文已保存。连续记录会合并整理，通常在最后一条分析完成约30秒后更新。"))}</p><button class="text-button" data-retry-day="true">立即整理 ↗</button></div>`;
 }
 function renderPanel() {
   const data = state.data,
