@@ -44,6 +44,7 @@ jobs:
         run: |
           node --check web/app.js
           node --check web/about.js
+          node --check web/usage.js
       - name: Run system scenario checks
         timeout-minutes: 3
         run: python -m unittest discover -s tests -v
@@ -53,6 +54,9 @@ jobs:
       - name: Check action dates and evidence rendering contracts
         timeout-minutes: 1
         run: node tests/test_action_ui.js
+      - name: Check usage and cost rendering contracts
+        timeout-minutes: 1
+        run: node tests/test_usage_ui.js
       - name: Compare offline contracts with reviewed baseline (no model calls)
         timeout-minutes: 2
         run: python -m evals.run --baseline evals/baselines/contract-v1.json

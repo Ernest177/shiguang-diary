@@ -21,6 +21,7 @@ if __package__ in (None, ""):
 from app import __version__ as VERSION
 from app.ai import AIError, KeyStore, ModelClient, Worker, validate_config
 from app.store import Store, compact, day_valid, tzinfo
+from app.usage import UsageLedger, call_scope
 
 ROOT = Path(__file__).resolve().parent.parent
 WEB = ROOT / "web"
@@ -30,7 +31,8 @@ class Application:
     def __init__(self, data_dir):
         self.store = Store(data_dir)
         self.keys = KeyStore(self.store.directory)
-        self.client = ModelClient(self.keys)
+        self.usage = UsageLedger(self.store.directory)
+        self.client = ModelClient(self.keys, self.usage)
         self.worker = Worker(self.store, self.client)
         self.token = secrets.token_urlsafe(40)
 
@@ -164,6 +166,17 @@ class Handler(BaseHTTPRequestHandler):
             return self.send({"versions": rows})
         if path == "/api/about":
             return self.send(store.about_state(query.get("month", store.today()[:7])))
+        if path == "/api/usage":
+            result = self.app.usage.state(store.settings(), query.get("month", store.today()[:7]), int(query.get("offset", "0")))
+            with store.connection() as db:
+                for row in result["records"]:
+                    if row["kind"] == "entry":
+                        source = db.execute("SELECT journal_day FROM entries WHERE id=?", (row["target"],)).fetchone()
+                        row["source_day"] = source[0] if source else None
+            return self.send(result)
+        if path == "/api/usage/export":
+            return self.send(self.app.usage.export_csv(query.get("month", "all"), store.settings()["timezone"]),
+                             content_type="text/csv; charset=utf-8", filename="shiguang-usage.csv")
         if path == "/api/backups":
             return self.send({"backups": store.backups()})
         if path == "/api/export":
@@ -188,7 +201,7 @@ class Handler(BaseHTTPRequestHandler):
                                   "", "状态：" + {"pending": "待确认", "confirmed": "已确认", "corrected": "已修正"}[memory["status"]], ""])
                 return self.send("\n".join(lines).encode(), content_type="text/markdown; charset=utf-8", filename="shiguang-diary.md")
             return self.send(json.dumps(data, ensure_ascii=False, indent=2).encode(), filename="shiguang-backup.json")
-        files = {"/": "index.html", "/index.html": "index.html", "/app.js": "app.js", "/about.js": "about.js", "/styles.css": "styles.css", "/favicon.svg": "favicon.svg"}
+        files = {"/": "index.html", "/index.html": "index.html", "/app.js": "app.js", "/about.js": "about.js", "/usage.js": "usage.js", "/styles.css": "styles.css", "/favicon.svg": "favicon.svg"}
         if path in files:
             file = WEB / files[path]
             content = mimetypes.guess_type(file.name)[0] or "application/octet-stream"
@@ -256,11 +269,16 @@ class Handler(BaseHTTPRequestHandler):
                 def get(self):
                     return data.get("api_key") or (existing_keys.get() if same_service and not data.get("clear_key") else "")
 
-            response = ModelClient(TestKeys()).call(values, '只输出 JSON：{"ok":true}', {"message": "连接测试；不包含日记内容"})
+            with call_scope("test"):
+                response = ModelClient(TestKeys(), self.app.usage).call(values, '只输出 JSON：{"ok":true}', {"message": "连接测试；不包含日记内容"})
             if response.get("ok") is not True:
                 raise AIError("服务可以连接，但模型未按要求返回 JSON")
         elif path == "/api/backup":
             result = {"name": store.backup(force=True, label="manual")}
+            self.app.usage.backup(store.settings())
+        elif path == "/api/usage/price":
+            self.app.usage.save_price(store.settings(), data)
+            self.app.usage.backup(store.settings())
         elif path == "/api/restore":
             result = store.restore_backup(data.get("name"))
         elif path == "/api/import/preview":

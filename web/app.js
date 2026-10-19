@@ -67,6 +67,10 @@ const state = {
   aboutTab: "portrait",
   aboutMonth: "",
   aboutSerial: 0,
+  usage: null,
+  usageMonth: "",
+  usageOffset: 0,
+  usageSerial: 0,
 };
 let draftId = crypto.randomUUID(),
   toastTimer,
@@ -530,7 +534,7 @@ function render() {
   applyView();
 }
 function applyView() {
-  ["record", "review", "actions", "settings", "about"].forEach((view) => {
+  ["record", "review", "actions", "settings", "about", "usage"].forEach((view) => {
     $(`#${view}-view`).hidden = view !== state.view;
   });
   $$("[data-view]").forEach((button) =>
@@ -542,12 +546,13 @@ function applyView() {
     actions: "行动清单",
     settings: "偏好与设置",
     about: "关于我",
+    usage: "用量与费用",
   }[state.view];
   $("#insights-panel").hidden = state.view !== "record";
   $("#toggle-insights").hidden = state.view !== "record";
 }
 function setView(view) {
-  if (!["record", "review", "actions", "settings", "about"].includes(view))
+  if (!["record", "review", "actions", "settings", "about", "usage"].includes(view))
     return;
   state.view = view;
   history.replaceState(null, "", `#${view}`);
@@ -555,6 +560,10 @@ function setView(view) {
   if (view === "about") {
     renderAbout();
     loadAbout().catch((error) => toast(error.message));
+  }
+  if (view === "usage") {
+    renderUsage();
+    loadUsage().catch((error) => toast(error.message));
   }
   applyView();
 }
@@ -564,7 +573,7 @@ async function selectDay(day) {
   state.query = "";
   $("#search").value = "";
   if (!$("#entry-body").value && !state.edit) $("#entry-day").value = day;
-  if (["settings", "actions", "about"].includes(state.view)) setView("record");
+  if (["settings", "actions", "about", "usage"].includes(state.view)) setView("record");
   await loadState();
 }
 
@@ -775,7 +784,7 @@ async function showHistory(id) {
   );
 }
 async function goSource(id, day) {
-  if (day !== state.day || state.query) {
+  if (day !== state.day || state.query || state.view === "usage") {
     await selectDay(day);
   }
   setView("record");
@@ -944,6 +953,7 @@ async function init() {
     state.version = boot.version;
     state.today = boot.today;
     state.aboutMonth = boot.today.slice(0, 7);
+    state.usageMonth = boot.today.slice(0, 7);
     state.day = boot.today;
     state.month = dateAt(boot.today);
     state.settings = boot.settings;
@@ -957,6 +967,11 @@ async function init() {
 }
 init();
 setInterval(() => {
+  if (state.view === "usage") {
+    if (!document.hidden && !modal.open && !$("#usage-pricing")?.open)
+      loadUsage({ silent: true });
+    return;
+  }
   if (
     state.data &&
     !document.hidden &&

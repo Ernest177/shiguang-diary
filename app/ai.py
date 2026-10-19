@@ -9,6 +9,7 @@ import json
 import os
 import re
 import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -17,6 +18,7 @@ from datetime import datetime, timedelta, timezone
 from app.store import compact, day_valid, now, uid, tzinfo
 from app.prompts import ENTRY_PROMPT, DAY_PROMPT
 from app.action_dates import duration_deadline
+from app.usage import call_scope, usage_counts
 
 REQUEST_OPTIONS = {"temperature": 0.2, "stream": False}
 
@@ -105,14 +107,14 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 class ModelClient:
-    def __init__(self, keys):
-        self.keys = keys
+    def __init__(self, keys, ledger=None):
+        self.keys, self.ledger = keys, ledger
 
     def call(self, settings, system, content):
         return self.call_with_metadata(settings, system, content)[0]
 
     def call_with_metadata(self, settings, system, content):
-        """Same production request, with optional provider usage for explicit evaluations."""
+        """One request, with usage captured before content parsing can fail."""
         validate_config(settings)
         if settings["ai_mode"] == "off":
             raise AIError("AI 尚未启用")
@@ -127,30 +129,59 @@ class ModelClient:
             headers["Authorization"] = "Bearer " + key
         request = urllib.request.Request(endpoint, compact(payload).encode(), headers=headers, method="POST")
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
+        identifier = None
+        if self.ledger:
+            try:
+                identifier = self.ledger.start(settings)
+            except Exception:
+                raise AIError("无法创建本次用量记录，已暂停模型调用，请检查数据目录与磁盘空间") from None
+        started = time.perf_counter()
+        raw_usage, returned_model = {}, None
+        status, error_code = "error", "invalid_response"
         try:
             with opener.open(request, timeout=75) as response:
                 raw = response.read(2_000_001)
                 if len(raw) > 2_000_000:
                     raise AIError("AI 响应过大，请使用更简洁的模型输出")
                 result = json.loads(raw)
+                if not isinstance(result, dict):
+                    raise AIError("AI 返回了不支持的内容格式")
+                raw_usage = result.get("usage") if isinstance(result.get("usage"), dict) else {}
+                returned_model = result.get("model")
                 answer = result["choices"][0]["message"]["content"]
                 if not isinstance(answer, str):
                     raise AIError("AI 返回了不支持的内容格式")
                 answer = re.sub(r"^```(?:json)?\s*|\s*```$", "", answer.strip())
                 output = json.loads(answer)
-                usage = result.get("usage")
-                if not isinstance(usage, dict):
-                    usage = {}
-                metadata = {"requested_model": settings["ai_model"], "returned_model": result.get("model"),
-                            "usage": {k: usage.get(k) for k in ("prompt_tokens", "completion_tokens", "total_tokens")}}
+                counts = usage_counts(raw_usage)
+                metadata = {"requested_model": settings["ai_model"], "returned_model": returned_model,
+                            "usage": {"prompt_tokens": counts["input_tokens"], "completion_tokens": counts["output_tokens"],
+                                      "total_tokens": counts["total_tokens"], "cached_tokens": counts["cached_tokens"],
+                                      "reasoning_tokens": counts["reasoning_tokens"]}}
+                status, error_code = "success", None
                 return output, metadata
         except urllib.error.HTTPError as exc:
+            error_code = "http_" + str(exc.code)
             messages = {401: "AI 密钥无效或未授权", 403: "AI 服务拒绝访问", 404: "找不到模型或接口，请检查地址与模型名", 429: "AI 服务限流或额度不足，请稍后重试"}
             raise AIError(messages.get(exc.code, "AI 服务暂时出错（HTTP %s）" % exc.code)) from None
         except (urllib.error.URLError, TimeoutError, OSError):
+            error_code = "network_or_timeout"
             raise AIError("无法连接 AI 服务或请求超时；日记已保存在本机") from None
         except (KeyError, IndexError, json.JSONDecodeError, TypeError):
             raise AIError("AI 未返回有效的结构化结果，可更换模型或重试") from None
+        finally:
+            if identifier:
+                try:
+                    self.ledger.finish(identifier, raw_usage, returned_model, status,
+                                       round((time.perf_counter() - started) * 1000), error_code)
+                except Exception:
+                    # Never retry a paid response merely because accounting failed.
+                    self.ledger.warning = "部分用量记录未能写回，费用可能不完整；请检查磁盘空间。"
+                else:
+                    try:
+                        self.ledger.backup(settings)
+                    except Exception:
+                        self.ledger.warning = "用量已记录，但独立快照备份失败；请检查备份目录与磁盘空间。"
 
 
 def text(value, maximum=1000):
@@ -277,13 +308,14 @@ class Worker:
                 return True
             db.execute("UPDATE jobs SET status='running',attempts=attempts+1,updated_at=? WHERE id=?", (now(), job["id"]))
         try:
-            if job["kind"] == "entry":
-                self.analyze_entry(job, settings)
-            elif job["kind"] in ("memory", "portrait", "month"):
-                from app.about_ai import execute_about
-                execute_about(self, job, settings)
-            else:
-                self.analyze_day(job, settings)
+            with call_scope(job["kind"], job["target"], job["id"], job["attempts"] + 1):
+                if job["kind"] == "entry":
+                    self.analyze_entry(job, settings)
+                elif job["kind"] in ("memory", "portrait", "month"):
+                    from app.about_ai import execute_about
+                    execute_about(self, job, settings)
+                else:
+                    self.analyze_day(job, settings)
             with store.connection() as db:
                 db.execute("UPDATE jobs SET status='done',error=NULL,updated_at=? WHERE id=?", (now(), job["id"]))
             try:
