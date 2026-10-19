@@ -16,6 +16,7 @@ from datetime import datetime, timedelta, timezone
 
 from app.store import compact, day_valid, now, uid, tzinfo
 from app.prompts import ENTRY_PROMPT, DAY_PROMPT
+from app.action_dates import duration_deadline
 
 REQUEST_OPTIONS = {"temperature": 0.2, "stream": False}
 
@@ -203,6 +204,9 @@ def validate_entry(data, entry, existing):
             if not due_text:
                 raise AIError("AI 日期缺少原文依据")
             day_valid(due_date)
+        resolved = duration_deadline(entry, quote, kind)
+        if resolved:
+            due_text, due_date = resolved
         existing_id = item.get("existing_action_id")
         if existing_id and existing_id not in known:
             raise AIError("AI 引用了不存在的行动")
@@ -321,6 +325,12 @@ class Worker:
                 identifier = row["id"] if row else uid()
                 if not row:
                     db.execute("INSERT INTO actions VALUES(?,?,?,?,?,?,?,?,?,?)", (identifier, fingerprint, action["title"], action["kind"], "open", action["due_text"], action["due_date"], 0, now(), now()))
+                elif not row["user_modified"] and row["status"] == "open" and action["due_date"] is not None and db.execute(
+                    "SELECT 1 FROM action_sources WHERE action_id=? AND entry_id=?", (identifier, entry["id"])
+                ).fetchone():
+                    # Reanalysis can repair a missed date, but never a user's edit.
+                    db.execute("UPDATE actions SET due_text=?,due_date=?,updated_at=? WHERE id=?",
+                               (action["due_text"], action["due_date"], now(), identifier))
                 db.execute("INSERT OR REPLACE INTO action_sources VALUES(?,?,?,?)", (identifier, entry["id"], entry["revision"], action["quote"]))
             for completed in result["completions"]:
                 action = db.execute("SELECT * FROM actions WHERE id=? AND status='open' AND user_modified=0", (completed["action_id"],)).fetchone()

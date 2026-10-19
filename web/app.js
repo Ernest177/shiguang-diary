@@ -341,7 +341,36 @@ function renderReview() {
     `<div class="view-header"><div class="eyebrow">A DAY, REVISITED</div><h1 class="view-title">${escapeHTML(displayDate(state.day, { month: "long", day: "numeric" }))}，回头看看</h1><p class="view-description">重要的经历、想法和决定，在这里连成一天的轮廓。</p></div><div class="review-stats"><div><strong>${count}</strong><span>留下的片段</span></div><div><strong>${actions.filter((a) => a.kind === "task" && a.status === "open").length}</strong><span>待跟进的行动</span></div><div><strong>${actions.filter((a) => a.kind === "opportunity" && a.status === "open").length}</strong><span>值得探索的事</span></div></div>${summary.data ? `<div class="review-box">${summaryHTML(summary)}</div><div class="setting-actions"><button class="text-button" data-retry-day="true">重新整理这一天 ↗</button></div>` : count ? summaryPending(summary) : empty("还没有这一天的回顾", "先写下一个片段，日子的轮廓会逐渐清晰。", "leaf")}`;
 }
 
+function actionDeadline(a) {
+  if (!a.due_date) {
+    return `<span class="action-due ${a.due_text ? "uncertain" : "unset"}">${icon("calendar")}<span>${a.due_text ? "时间待确认" : "未设截止日期"}</span></span>`;
+  }
+  const days = Math.round(
+    (Date.parse(`${a.due_date}T00:00:00Z`) - Date.parse(`${state.today}T00:00:00Z`)) / 86400000,
+  );
+  const active = a.status === "open";
+  const status = active
+    ? days < 0 ? `逾期 ${-days} 天` : ({ 0: "今天", 1: "明天", 2: "后天" })[days] || ""
+    : "";
+  const tone = active && days < 0 ? "overdue" : active && days <= 2 ? "soon" : "";
+  return `<span class="action-due ${tone}">${icon("calendar")}<span class="action-due-label">截止</span><time datetime="${escapeHTML(a.due_date)}">${escapeHTML(a.due_date)}</time>${status ? `<span class="action-due-status">${status}</span>` : ""}</span>`;
+}
+
+function actionCard(a, expanded = false) {
+  const sources = a.sources;
+  const evidence = a.due_text && a.due_text !== a.due_date
+    ? `<p class="action-time-quote">时间原话：${escapeHTML(a.due_text)}</p>` : "";
+  return `<article class="action-card">
+    ${a.kind === "task" ? `<button class="action-check ${a.status === "done" ? "done" : ""}" data-action-status="${escapeHTML(a.id)}" data-status="${a.status === "done" ? "open" : "done"}" aria-label="${a.status === "done" ? "重新打开" : "完成"}行动">${a.status === "done" ? icon("check") : ""}</button>` : `<span class="action-edit">${icon(a.kind === "opportunity" ? "sparkles" : "list")}</span>`}
+    <div class="action-main">
+      <div class="action-heading"><div class="action-title ${a.status === "done" ? "done" : ""}">${escapeHTML(a.title)}</div>${actionDeadline(a)}</div>
+      ${sources.length ? `<details class="source-details action-sources" data-action-sources="${escapeHTML(a.id)}" ${expanded ? "open" : ""}><summary>原文依据<span class="action-source-count">${sources.length} 条</span></summary><div class="action-source-list">${evidence}${sources.map((s) => `<div class="action-source"><div class="action-source-heading"><span>记录于 ${escapeHTML(s.journal_day)}</span>${sourceButton(s, "打开这条日记")}</div><blockquote>${escapeHTML(s.quote)}</blockquote></div>`).join("")}</div></details>` : `<p class="orphan-note action-orphan">原始记录已修改或删除，保留你的手动选择</p>`}
+      <div class="action-tools"><button data-action-edit="${escapeHTML(a.id)}">编辑</button>${a.kind !== "task" && a.status === "open" ? `<button data-promote="${escapeHTML(a.id)}">转为待办</button>` : ""}${a.status === "open" ? `<button data-action-status="${escapeHTML(a.id)}" data-status="${a.kind === "task" ? "cancelled" : "dismissed"}">${a.kind === "task" ? "取消行动" : "暂不采纳"}</button>` : a.status !== "done" ? `<button data-action-status="${escapeHTML(a.id)}" data-status="open">重新打开</button>` : ""}</div>
+    </div></article>`;
+}
+
 function renderActions() {
+  const expanded = new Set($$(".action-sources[open]", $("#actions-view")).map((el) => el.dataset.actionSources));
   const actions = state.data.actions;
   const tabs = [
     ["task", "明确待办"],
@@ -358,7 +387,7 @@ function renderActions() {
       : a.kind === tab && a.status === "open";
   const items = actions.filter((a) => match(a, state.actionTab));
   $("#actions-view").innerHTML =
-    `<div class="view-header"><div class="eyebrow">THOUGHTS INTO MOTION</div><h1 class="view-title">让想法，有处落脚</h1><p class="view-description">明确的承诺变成待办，尚未决定的灵感留在「值得做」。</p></div><div class="tabbar" role="tablist" aria-label="行动类别">${tabs.map(([id, title]) => `<button role="tab" aria-selected="${state.actionTab === id}" data-tab="${id}" class="${state.actionTab === id ? "active" : ""}">${title}<small>${actions.filter((a) => match(a, id)).length}</small></button>`).join("")}</div>${items.length ? items.map((a) => `<article class="action-card">${a.kind === "task" ? `<button class="action-check ${a.status === "done" ? "done" : ""}" data-action-status="${escapeHTML(a.id)}" data-status="${a.status === "done" ? "open" : "done"}" aria-label="${a.status === "done" ? "重新打开" : "完成"}行动">${a.status === "done" ? icon("check") : ""}</button>` : `<span class="action-edit">${icon(a.kind === "opportunity" ? "sparkles" : "list")}</span>`}<div class="action-main"><div class="action-title ${a.status === "done" ? "done" : ""}">${escapeHTML(a.title)}</div><div class="action-meta">${a.due_text ? `<span>${escapeHTML(a.due_text)}${a.due_date ? " · " + escapeHTML(a.due_date) : " · 日期待确认"}</span>` : "<span>未设置截止时间</span>"}${a.sources.map((s) => sourceButton(s, s.journal_day)).join("")}${!a.sources.length ? '<span class="orphan-note">原始记录已修改或删除，保留你的手动选择</span>' : ""}</div>${a.sources.length ? `<details class="source-details"><summary>查看原文依据</summary>${a.sources.map((s) => `<blockquote>${escapeHTML(s.quote)}</blockquote>`).join("")}</details>` : ""}<div class="action-tools"><button data-action-edit="${escapeHTML(a.id)}">编辑</button>${a.kind !== "task" && a.status === "open" ? `<button data-promote="${escapeHTML(a.id)}">转为待办</button>` : ""}${a.status === "open" ? `<button data-action-status="${escapeHTML(a.id)}" data-status="${a.kind === "task" ? "cancelled" : "dismissed"}">${a.kind === "task" ? "取消行动" : "暂不采纳"}</button>` : a.status !== "done" ? `<button data-action-status="${escapeHTML(a.id)}" data-status="open">重新打开</button>` : ""}</div></div></article>`).join("") : empty("给行动留一点空间", state.settings.ai_mode === "off" ? "启用智能整理后，这里会收纳日记中的待办与灵感。" : "记录明确计划时，AI 会帮你提取行动并保留原文依据。", "list")}`;
+    `<div class="view-header"><div class="eyebrow">THOUGHTS INTO MOTION</div><h1 class="view-title">让想法，有处落脚</h1><p class="view-description">明确的承诺变成待办，尚未决定的灵感留在「值得做」。</p></div><div class="tabbar" role="tablist" aria-label="行动类别">${tabs.map(([id, title]) => `<button role="tab" aria-selected="${state.actionTab === id}" data-tab="${id}" class="${state.actionTab === id ? "active" : ""}">${title}<small>${actions.filter((a) => match(a, id)).length}</small></button>`).join("")}</div>${items.length ? items.map((a) => actionCard(a, expanded.has(a.id))).join("") : empty("给行动留一点空间", state.settings.ai_mode === "off" ? "启用智能整理后，这里会收纳日记中的待办与灵感。" : "记录明确计划时，AI 会帮你提取行动并保留原文依据。", "list")}`;
 }
 
 function renderSettings() {
@@ -732,7 +761,6 @@ function editAction(id) {
         title: form.get("title"),
         kind: form.get("kind"),
         due_date: due,
-        due_text: due,
       });
       modal.close();
     } catch (error) {

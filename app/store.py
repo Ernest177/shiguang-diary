@@ -252,6 +252,9 @@ class Store(AboutMixin):
             for k in ("title", "kind", "status", "due_text", "due_date"):
                 if k in payload:
                     after[k] = payload[k]
+            if "due_date" in payload and payload["due_date"] != before["due_date"] and "due_text" not in payload:
+                # A manually chosen date is not a quotation from the diary.
+                after["due_text"] = None
             if not isinstance(after["title"], str) or not after["title"].strip() or len(after["title"]) > 300:
                 raise ValueError("行动标题需为 1–300 个字符")
             if after["kind"] not in ("task", "opportunity", "question") or after["status"] not in ("open", "done", "cancelled", "dismissed"):

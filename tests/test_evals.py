@@ -120,7 +120,7 @@ class EvaluationTests(unittest.TestCase):
 
     def test_prompt_text_cannot_change_under_same_version(self):
         registry = {p["version"]: p["sha256"] for p in prompt_metadata().values()}
-        registry["entry.v1"] = "wrong"
+        registry[prompt_metadata()["entry"]["version"]] = "wrong"
         with patch("evals.run.read_json", return_value=registry):
             with self.assertRaises(ValueError):
                 check_prompts()

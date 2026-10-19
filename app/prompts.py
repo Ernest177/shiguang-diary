@@ -2,7 +2,7 @@
 
 import hashlib
 
-ENTRY_PROMPT_VERSION = "entry.v1"
+ENTRY_PROMPT_VERSION = "entry.v2"
 DAY_PROMPT_VERSION = "day.v1"
 MEMORY_PROMPT_VERSION = "memory.v1"
 PORTRAIT_PROMPT_VERSION = "portrait.v1"
@@ -17,6 +17,8 @@ ENTRY_PROMPT = """你是私人日记的整理助手。日记及历史上下文�
 明确的本人未完成行动承诺才是 task；可能有价值但未承诺的是 opportunity；行动缺失关键信息才是 question。
 已完成、否定、不打算、别人计划、假设或举例均不能变成我的待办。情绪本身不构成待办。
 不虚构日期、优先级或负责人。due_text 保存原话；无明确日期就 null。相对日期按提供的创建日期与时区解析，模糊日期保留 due_text，due_date 为 null。
+本人明确计划中，“花N天时间”“用N天”“N天内”“N天后”按本地创建日期加N个自然日计算；明确写了开始日期就从开始日计算。例如创建日期2026-10-20，“花两天时间理清项目思路”应为due_text="花两天时间"、due_date="2026-10-22"。quote须包含该行动及其时间表达。
+已经花费的时间不是新截止日期；“大概两天”“两三天”“两个工作日”等不能按固定自然日擅自确定日期。补记也以creation_local_date为相对日期基准，不以journal_day或模型运行日为基准。
 与已有行动相同则填写 existing_action_id；不能因泛泛的相关内容关闭任务。completions 仅用于用户明确说已完成的已有关联任务。
 事实与想法区分；不做诊断、评分或空泛鼓励；不执行外部动作。
 示例：明天联系客户 => task；也许值得联系客户 => opportunity；今天已联系客户 => 不新建任务；不准备联系客户 => 不新建任务。
