@@ -11,6 +11,8 @@ import uuid
 from datetime import datetime, timezone, timedelta, date
 from pathlib import Path
 
+from app.about import ABOUT_SCHEMA, ABOUT_TABLES, AboutMixin
+
 
 def now():
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
@@ -73,15 +75,14 @@ CREATE TABLE IF NOT EXISTS jobs(
  id TEXT PRIMARY KEY,kind TEXT NOT NULL,target TEXT NOT NULL,revision INTEGER NOT NULL,
  status TEXT NOT NULL,attempts INTEGER NOT NULL DEFAULT 0,error TEXT,
  retry_at TEXT,updated_at TEXT NOT NULL,UNIQUE(kind,target));
-PRAGMA user_version=1;
-"""
+""" + ABOUT_SCHEMA + "\nPRAGMA user_version=2;\n"
 
 DEFAULTS = {"timezone": "Asia/Shanghai", "ai_mode": "off", "ai_base_url": "",
             "ai_model": "", "cloud_consent": False, "backup_keep": 30,
             "backup_dir": "", "last_backup_at": "", "backup_error": ""}
 
 
-class Store:
+class Store(AboutMixin):
     def __init__(self, directory):
         self.directory = Path(directory).resolve()
         self.directory.mkdir(parents=True, exist_ok=True)
@@ -89,11 +90,20 @@ class Store:
         self.lock = threading.RLock()
         with self.connection() as db:
             version = db.execute("PRAGMA user_version").fetchone()[0]
-            if version > 1:
+            if version > 2:
                 raise RuntimeError("数据库来自更新的应用版本，请使用较新程序打开")
-            db.executescript(SCHEMA)
+            if version == 1:
+                folder = self.directory / "upgrade-backups"
+                folder.mkdir(exist_ok=True)
+                snapshot = folder / ("before-v2-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ") + ".sqlite3")
+                with contextlib.closing(sqlite3.connect(snapshot)) as target:
+                    db.backup(target)
+                    if target.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+                        raise RuntimeError("升级前备份未通过检查，已停止升级")
+            db.executescript("BEGIN IMMEDIATE;\n" + SCHEMA + "\nCOMMIT;")
             for k, v in DEFAULTS.items():
                 db.execute("INSERT OR IGNORE INTO settings VALUES(?,?)", (k, compact(v)))
+            db.execute("UPDATE jobs SET status='failed',error='整理期间服务已重启，请确认后手动重试' WHERE status='running' AND kind IN ('memory','portrait','month')")
             db.execute("UPDATE jobs SET status='queued' WHERE status='running'")
 
     @contextlib.contextmanager
@@ -153,6 +163,9 @@ class Store:
             if not isinstance(identifier, str) or len(identifier) > 80:
                 raise ValueError("无效的记录编号")
             revision = previous["revision"] + 1 if previous else 1
+            self.invalidate_about(db, "entry", identifier)
+            if not enabled:
+                db.execute("DELETE FROM memory_permissions WHERE entry_id=?", (identifier,))
             stamp = now()
             zone = previous["timezone"] if previous else self.settings(db)["timezone"]
             db.execute("""INSERT INTO entries VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
@@ -187,6 +200,7 @@ class Store:
             row = db.execute("SELECT journal_day FROM entries WHERE id=?", (identifier,)).fetchone()
             if not row:
                 raise ValueError("记录已不存在")
+            self.invalidate_about(db, "entry", identifier)
             db.execute("DELETE FROM entries WHERE id=?", (identifier,))
             db.execute("DELETE FROM daily_summaries WHERE day=?", (row[0],))
             db.execute("DELETE FROM jobs WHERE kind='entry' AND target=?", (identifier,))
@@ -195,7 +209,8 @@ class Store:
 
     def entries(self, day=None, query=""):
         with self.connection() as db:
-            sql = """SELECT e.*,a.data AS analysis,a.updated_at AS analyzed_at,
+            sql = """SELECT e.*,EXISTS(SELECT 1 FROM memory_permissions p WHERE p.entry_id=e.id) AS memory_enabled,
+              a.data AS analysis,a.updated_at AS analyzed_at,
               a.revision AS analyzed_revision,j.status AS job_status,j.error AS analysis_error
               FROM entries e LEFT JOIN analyses a ON a.entry_id=e.id
               LEFT JOIN jobs j ON j.kind='entry' AND j.target=e.id WHERE 1=1"""
@@ -305,15 +320,14 @@ class Store:
     def export(self):
         with self.connection() as db:
             tables = {table: [dict(r) for r in db.execute("SELECT * FROM " + table)] for table in
-                      ("entries", "entry_versions", "analyses", "actions", "action_sources", "action_history", "daily_summaries")}
-            return {"format": "shiguang-diary", "schema_version": 1, "exported_at": now(), "tables": tables,
+                      ("entries", "entry_versions", "analyses", "actions", "action_sources", "action_history", "daily_summaries") + ABOUT_TABLES}
+            return {"format": "shiguang-diary", "schema_version": 2, "exported_at": now(), "tables": tables,
                     "preferences": {k: v for k, v in self.settings(db).items() if k in ("timezone", "backup_keep")}}
 
     def validate_import(self, data):
-        if not isinstance(data, dict) or data.get("format") != "shiguang-diary" or data.get("schema_version") != 1:
-            raise ValueError("不是受支持的拾光日记备份（格式版本 1）")
+        data = self.normalize_bundle(data)
         tables = data.get("tables")
-        expected = ("entries", "entry_versions", "analyses", "actions", "action_sources", "action_history", "daily_summaries")
+        expected = ("entries", "entry_versions", "analyses", "actions", "action_sources", "action_history", "daily_summaries") + ABOUT_TABLES
         if not isinstance(tables, dict) or set(tables) != set(expected):
             raise ValueError("备份表结构不完整")
         # Validate in a scratch database: real constraints, types and references must hold.
@@ -375,6 +389,7 @@ class Store:
             for h in tables["action_history"]:
                 json.loads(h["before_data"])
                 json.loads(h["after_data"])
+            self.validate_about_import(tables)
         except (sqlite3.Error, TypeError, KeyError, AttributeError, UnboundLocalError) as exc:
             raise ValueError("备份数据损坏或关联不完整") from exc
         finally:
@@ -390,15 +405,18 @@ class Store:
                     else:
                         conflicts += 1
             return {"entries": len(tables["entries"]), "new": len(tables["entries"]) - duplicate - conflicts,
-                    "duplicates": duplicate, "conflicts": conflicts, "actions": len(tables["actions"])}
+                    "duplicates": duplicate, "conflicts": conflicts, "actions": len(tables["actions"]),
+                    "experiences": len(tables["experiences"]), "memories": len(tables["memories"])}
 
     def import_data(self, data, replace=False):
+        data = self.normalize_bundle(data)
         preview = self.validate_import(data)
         self.backup(force=True, label="before-import")
         tables = data["tables"]
         with self.connection() as db:
             if replace:
-                for table in ("jobs", "daily_summaries", "action_history", "action_sources", "actions", "analyses", "entry_versions", "entries"):
+                for table in ("personal_reports", "memory_suppressions", "memory_sources", "memories", "memory_permissions", "experiences",
+                              "jobs", "daily_summaries", "action_history", "action_sources", "actions", "analyses", "entry_versions", "entries"):
                     db.execute("DELETE FROM " + table)
             # Merge deliberately preserves local conflicts, including task user overrides.
             skip_ids = set()
@@ -425,6 +443,34 @@ class Store:
                             continue
                     columns = list(row)
                     db.execute("INSERT OR IGNORE INTO " + table + "(" + ",".join(columns) + ") VALUES(" + ",".join("?" for _ in columns) + ")", list(row.values()))
+            skipped_experiences = {r[0] for r in db.execute("SELECT id FROM experiences")}
+            memory_map = {}
+            for table in ABOUT_TABLES:
+                if table == "personal_reports":
+                    continue  # Recompute derived reports against the restored/merged context.
+                for original in tables[table]:
+                    row = dict(original)
+                    if table == "memory_permissions" and row["entry_id"] in skip_ids:
+                        continue
+                    if table == "memories":
+                        current = db.execute("SELECT id FROM memories WHERE id=? OR fingerprint=? ORDER BY id=? DESC LIMIT 1", (row["id"], row["fingerprint"], row["id"])).fetchone()
+                        memory_map[row["id"]] = current[0] if current else row["id"]
+                        if current:
+                            continue
+                    if table == "memory_sources":
+                        if row["entry_id"] in skip_ids or row["experience_id"] in skipped_experiences:
+                            continue
+                        row["memory_id"] = memory_map.get(row["memory_id"], row["memory_id"])
+                    if table == "memory_suppressions":
+                        current = db.execute("SELECT source_hashes FROM memory_suppressions WHERE fingerprint=?", (row["fingerprint"],)).fetchone()
+                        row["source_hashes"] = compact(sorted(set(json.loads(row["source_hashes"]) + (json.loads(current[0]) if current else []))))
+                        db.execute("INSERT OR REPLACE INTO memory_suppressions VALUES(?,?)", (row["fingerprint"], row["source_hashes"]))
+                        continue
+                    columns = list(row)
+                    db.execute("INSERT OR IGNORE INTO " + table + "(" + ",".join(columns) + ") VALUES(" + ",".join("?" for _ in columns) + ")", list(row.values()))
+            db.execute("DELETE FROM memories WHERE fingerprint IN (SELECT fingerprint FROM memory_suppressions)")
+            db.execute("DELETE FROM memories WHERE NOT EXISTS(SELECT 1 FROM memory_sources s WHERE s.memory_id=memories.id)")
+            self.invalidate_about(db)
             if replace:
                 for k, v in data.get("preferences", {}).items():
                     if k == "timezone":
@@ -486,7 +532,13 @@ class Store:
         try:
             if source.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
                 raise ValueError("备份未通过完整性检查")
-            bundle = {"format": "shiguang-diary", "schema_version": 1, "tables": {t: [dict(r) for r in source.execute("SELECT * FROM " + t)] for t in self.export()["tables"]}}
+            version = source.execute("PRAGMA user_version").fetchone()[0]
+            if version not in (1, 2):
+                raise ValueError("备份来自不支持的数据版本")
+            names = tuple(self.export()["tables"])
+            if version == 1:
+                names = tuple(t for t in names if t not in ABOUT_TABLES)
+            bundle = {"format": "shiguang-diary", "schema_version": version, "tables": {t: [dict(r) for r in source.execute("SELECT * FROM " + t)] for t in names}}
             return self.import_data(bundle, replace=True)
         finally:
             source.close()

@@ -162,6 +162,8 @@ class Handler(BaseHTTPRequestHandler):
             with store.connection() as db:
                 rows = [dict(r) for r in db.execute("SELECT * FROM entry_versions WHERE entry_id=? ORDER BY revision DESC", (query.get("id"),))]
             return self.send({"versions": rows})
+        if path == "/api/about":
+            return self.send(store.about_state(query.get("month", store.today()[:7])))
         if path == "/api/backups":
             return self.send({"backups": store.backups()})
         if path == "/api/export":
@@ -177,9 +179,16 @@ class Handler(BaseHTTPRequestHandler):
                 lines.extend(["# 行动", ""])
                 for a in data["tables"]["actions"]:
                     lines.append("- [%s] %s（%s / %s）" % ("x" if a["status"] == "done" else " ", a["title"], a["kind"], a["status"]))
+                lines.extend(["", "# 成长经历", ""])
+                for experience in data["tables"]["experiences"]:
+                    lines.extend(["## " + experience["title"], "", experience["period"] + " · " + experience["chapter"], "", experience["body"], ""])
+                lines.extend(["# 长期记忆", ""])
+                for memory in store.memories():
+                    lines.extend(["## " + memory["title"], "", (memory["correction"] if memory["status"] == "corrected" else memory["detail"]),
+                                  "", "状态：" + {"pending": "待确认", "confirmed": "已确认", "corrected": "已修正"}[memory["status"]], ""])
                 return self.send("\n".join(lines).encode(), content_type="text/markdown; charset=utf-8", filename="shiguang-diary.md")
             return self.send(json.dumps(data, ensure_ascii=False, indent=2).encode(), filename="shiguang-backup.json")
-        files = {"/": "index.html", "/index.html": "index.html", "/app.js": "app.js", "/styles.css": "styles.css", "/favicon.svg": "favicon.svg"}
+        files = {"/": "index.html", "/index.html": "index.html", "/app.js": "app.js", "/about.js": "about.js", "/styles.css": "styles.css", "/favicon.svg": "favicon.svg"}
         if path in files:
             file = WEB / files[path]
             content = mimetypes.guess_type(file.name)[0] or "application/octet-stream"
@@ -199,6 +208,25 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/actions/update":
             result = {"history_id": store.update_action(data.get("id"), data)}
             mutated = True
+        elif path == "/api/experiences/save":
+            result = {"experience": store.save_experience(data)}
+            mutated = True
+        elif path == "/api/experiences/delete":
+            store.delete_experience(data.get("id"))
+            mutated = True
+        elif path == "/api/memory/permission":
+            store.set_memory_permission(data.get("id"), data.get("enabled"))
+            mutated = True
+        elif path == "/api/memory/update":
+            store.update_memory(data.get("id"), data)
+            mutated = True
+        elif path == "/api/memory/forget":
+            store.forget_memory(data.get("id"))
+            mutated = True
+        elif path == "/api/about/generate":
+            if store.settings()["ai_mode"] == "off":
+                raise ValueError("请先在偏好与设置中启用 AI")
+            store.request_about(data.get("kind"), data.get("target", "current"))
         elif path == "/api/actions/undo":
             store.undo_action(data.get("history_id"))
             mutated = True

@@ -11,6 +11,7 @@
     <title>拾光 · 留住日常</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="stylesheet" href="/styles.css" />
+    <script src="/about.js" defer></script>
     <script src="/app.js" defer></script>
   </head>
   <body>
@@ -39,6 +40,10 @@
           <button data-view="actions" class="nav-item">
             <span data-icon="check"></span><span>行动清单</span
             ><span id="action-count" class="count-badge">0</span>
+          </button>
+          <button data-view="about" class="nav-item">
+            <span data-icon="leaf"></span><span>关于我</span
+            ><span class="nav-shortcut">04</span>
           </button>
         </nav>
         <div class="calendar-section">
@@ -167,6 +172,7 @@
             <section id="review-view" class="view" hidden></section>
             <section id="actions-view" class="view" hidden></section>
             <section id="settings-view" class="view" hidden></section>
+            <section id="about-view" class="view" hidden></section>
             <footer class="page-footer">
               <span>每个平凡的日子，都有自己的纹理。</span
               ><span>拾光 · YOUR DAYS, WELL KEPT</span>

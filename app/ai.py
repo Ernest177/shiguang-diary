@@ -275,6 +275,9 @@ class Worker:
         try:
             if job["kind"] == "entry":
                 self.analyze_entry(job, settings)
+            elif job["kind"] in ("memory", "portrait", "month"):
+                from app.about_ai import execute_about
+                execute_about(self, job, settings)
             else:
                 self.analyze_day(job, settings)
             with store.connection() as db:
@@ -289,7 +292,7 @@ class Worker:
             retry_at = (datetime.now(timezone.utc) + timedelta(seconds=10 * attempts)).isoformat(timespec="milliseconds")
             with store.connection() as db:
                 db.execute("UPDATE jobs SET status=?,error=?,retry_at=?,updated_at=? WHERE id=?",
-                           ("failed" if attempts >= 3 else "queued", message[:300], retry_at, now(), job["id"]))
+                           ("failed" if attempts >= (1 if job["kind"] in ("memory", "portrait", "month") else 3) else "queued", message[:300], retry_at, now(), job["id"]))
         return True
 
     def analyze_entry(self, job, settings):

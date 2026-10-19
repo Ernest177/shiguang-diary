@@ -63,6 +63,10 @@ const state = {
   saving: false,
   serial: 0,
   panelCollapsed: false,
+  about: null,
+  aboutTab: "portrait",
+  aboutMonth: "",
+  aboutSerial: 0,
 };
 let draftId = crypto.randomUUID(),
   toastTimer,
@@ -213,6 +217,7 @@ async function loadState({ silent = false } = {}) {
     state.data = data;
     state.today = data.today;
     state.settings = data.settings;
+    if (state.view === "about") await loadAbout();
     render();
   } catch (error) {
     if (!silent) toast(error.message);
@@ -273,7 +278,7 @@ function renderEntries() {
     <div class="entry-top"><span class="entry-time">${escapeHTML(timeAt(entry.created_at, state.query.length > 0))}</span>${entry.revision > 1 ? '<span class="entry-tag">已编辑</span>' : ""}${state.query ? `<span class="entry-tag">${escapeHTML(entry.journal_day)}</span>` : ""}<div class="entry-menu"><button class="icon-button" data-history="${escapeHTML(entry.id)}" aria-label="查看记录历史">${icon("history")}</button><button class="icon-button" data-edit="${escapeHTML(entry.id)}" aria-label="编辑记录">${icon("edit")}</button><button class="icon-button" data-delete="${escapeHTML(entry.id)}" aria-label="删除记录">${icon("trash")}</button></div></div>
     <p class="entry-body">${escapeHTML(entry.body)}</p>
     ${entry.analysis ? `<details class="analysis-details"><summary>AI 整理 · ${escapeHTML(entry.analysis.summary)}</summary>${entry.analysis.insights.map((item) => `<div class="insight-line">${item.type === "idea" ? "想法 · " : ""}${escapeHTML(item.text)}<div class="evidence">“${escapeHTML(item.quote)}”</div></div>`).join("")}${entry.analysis.actions.map((a) => `<div class="insight-line">${{ task: "待办", opportunity: "值得做", question: "待澄清" }[a.kind]} · ${escapeHTML(a.title)}<div class="evidence">“${escapeHTML(a.quote)}”</div></div>`).join("")}</details>` : ""}
-    <div class="entry-bottom"><span class="status-label ${entry.analysis_error ? "error" : ""}" title="${escapeHTML(entry.analysis_error || "")}">${icon(entry.analysis ? "sparkles" : "lock")}${escapeHTML(statusText(entry))}</span><span>·</span><span>${entry.body.length.toLocaleString()} 字</span>${entry.ai_enabled && state.settings.ai_mode !== "off" ? `<button class="retry-button" data-retry="${escapeHTML(entry.id)}">${entry.analysis ? "重新整理" : "重试整理"}</button>` : ""}</div>
+    <div class="entry-bottom"><span class="status-label ${entry.analysis_error ? "error" : ""}" title="${escapeHTML(entry.analysis_error || "")}">${icon(entry.analysis ? "sparkles" : "lock")}${escapeHTML(statusText(entry))}</span><span>·</span><span>${entry.body.length.toLocaleString()} 字</span>${entry.ai_enabled ? `<button class="retry-button" data-memory-permission="${escapeHTML(entry.id)}">${entry.memory_enabled ? "已用于长期记忆 · 排除" : "用于长期记忆"}</button>` : ""}${entry.ai_enabled && state.settings.ai_mode !== "off" ? `<button class="retry-button" data-retry="${escapeHTML(entry.id)}">${entry.analysis ? "重新整理" : "重试整理"}</button>` : ""}</div>
     ${entry.analysis_error && state.settings.ai_mode !== "off" ? `<div class="notice error">${escapeHTML(entry.analysis_error)}</div>` : ""}
   </article>`,
     )
@@ -496,7 +501,7 @@ function render() {
   applyView();
 }
 function applyView() {
-  ["record", "review", "actions", "settings"].forEach((view) => {
+  ["record", "review", "actions", "settings", "about"].forEach((view) => {
     $(`#${view}-view`).hidden = view !== state.view;
   });
   $$("[data-view]").forEach((button) =>
@@ -507,15 +512,21 @@ function applyView() {
     review: "每日回顾",
     actions: "行动清单",
     settings: "偏好与设置",
+    about: "关于我",
   }[state.view];
   $("#insights-panel").hidden = state.view !== "record";
   $("#toggle-insights").hidden = state.view !== "record";
 }
 function setView(view) {
-  if (!["record", "review", "actions", "settings"].includes(view)) return;
+  if (!["record", "review", "actions", "settings", "about"].includes(view))
+    return;
   state.view = view;
   history.replaceState(null, "", `#${view}`);
   if (view === "settings") renderSettings();
+  if (view === "about") {
+    renderAbout();
+    loadAbout().catch((error) => toast(error.message));
+  }
   applyView();
 }
 async function selectDay(day) {
@@ -524,7 +535,7 @@ async function selectDay(day) {
   state.query = "";
   $("#search").value = "";
   if (!$("#entry-body").value && !state.edit) $("#entry-day").value = day;
-  if (["settings", "actions"].includes(state.view)) setView("record");
+  if (["settings", "actions", "about"].includes(state.view)) setView("record");
   await loadState();
 }
 
@@ -867,6 +878,20 @@ document.addEventListener("click", async (event) => {
       await api("/api/retry", { day: state.day });
       await loadState();
       toast("已加入每日整理队列");
+    } else if ("memoryPermission" in d) {
+      const entry = state.data.entries.find((e) => e.id === d.memoryPermission);
+      if (entry) {
+        await api("/api/memory/permission", {
+          id: entry.id,
+          enabled: !entry.memory_enabled,
+        });
+        await loadState();
+        toast(
+          entry.memory_enabled
+            ? "已排除长期记忆，相关理解已撤回"
+            : "已选择资料；到「关于我」更新档案时才会读取",
+        );
+      }
     } else if (d.tab) {
       state.actionTab = d.tab;
       renderActions();
@@ -890,6 +915,7 @@ async function init() {
     state.token = boot.token;
     state.version = boot.version;
     state.today = boot.today;
+    state.aboutMonth = boot.today.slice(0, 7);
     state.day = boot.today;
     state.month = dateAt(boot.today);
     state.settings = boot.settings;

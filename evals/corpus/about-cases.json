@@ -1,0 +1,411 @@
+{
+  "version": "about.synthetic.v1",
+  "notice": "Handwritten contract fixtures, not real model performance. All examples are fictional.",
+  "cases": [
+    {
+      "id": "memory-evidence",
+      "kind": "memory",
+      "context": {
+        "records": [
+          {
+            "id": "experience:sample",
+            "type": "experience",
+            "title": "合成经历",
+            "period": "2026-10",
+            "revision": 1,
+            "body": "最近一周我工作很忙，但周末仍然见了朋友。"
+          }
+        ],
+        "user_decisions": []
+      },
+      "response": {
+        "schema_version": 1,
+        "memories": [
+          {
+            "title": "近期工作安排",
+            "detail": "最近一周工作很忙。",
+            "category": "fact",
+            "horizon": "recent",
+            "period": "最近一周",
+            "sources": [
+              {
+                "record_id": "experience:sample",
+                "quote": "最近一周我工作很忙"
+              }
+            ]
+          }
+        ]
+      },
+      "expect_reject": false,
+      "expect_certainty": null
+    },
+    {
+      "id": "memory-invented-quote",
+      "kind": "memory",
+      "context": {
+        "records": [
+          {
+            "id": "experience:sample",
+            "type": "experience",
+            "title": "合成经历",
+            "period": "2026-10",
+            "revision": 1,
+            "body": "最近一周我工作很忙，但周末仍然见了朋友。"
+          }
+        ],
+        "user_decisions": []
+      },
+      "response": {
+        "schema_version": 1,
+        "memories": [
+          {
+            "title": "近期工作安排",
+            "detail": "最近一周工作很忙。",
+            "category": "fact",
+            "horizon": "recent",
+            "period": "最近一周",
+            "sources": [
+              {
+                "record_id": "experience:sample",
+                "quote": "我从来不在意朋友"
+              }
+            ]
+          }
+        ]
+      },
+      "expect_reject": true,
+      "expect_certainty": null
+    },
+    {
+      "id": "memory-missing-source",
+      "kind": "memory",
+      "context": {
+        "records": [
+          {
+            "id": "experience:sample",
+            "type": "experience",
+            "title": "合成经历",
+            "period": "2026-10",
+            "revision": 1,
+            "body": "最近一周我工作很忙，但周末仍然见了朋友。"
+          }
+        ],
+        "user_decisions": []
+      },
+      "response": {
+        "schema_version": 1,
+        "memories": [
+          {
+            "title": "近期工作安排",
+            "detail": "最近一周工作很忙。",
+            "category": "fact",
+            "horizon": "recent",
+            "period": "最近一周",
+            "sources": [
+              {
+                "record_id": "experience:missing",
+                "quote": "最近一周我工作很忙"
+              }
+            ]
+          }
+        ]
+      },
+      "expect_reject": true,
+      "expect_certainty": null
+    },
+    {
+      "id": "memory-recent-scope",
+      "kind": "memory",
+      "context": {
+        "records": [
+          {
+            "id": "experience:sample",
+            "type": "experience",
+            "title": "合成经历",
+            "period": "2026-10",
+            "revision": 1,
+            "body": "最近一周我工作很忙，但周末仍然见了朋友。"
+          }
+        ],
+        "user_decisions": []
+      },
+      "response": {
+        "schema_version": 1,
+        "memories": [
+          {
+            "title": "近期工作安排",
+            "detail": "最近一周工作很忙。",
+            "category": "fact",
+            "horizon": "recent",
+            "period": "",
+            "sources": [
+              {
+                "record_id": "experience:sample",
+                "quote": "最近一周我工作很忙"
+              }
+            ]
+          }
+        ]
+      },
+      "expect_reject": true,
+      "expect_certainty": null
+    },
+    {
+      "id": "memory-no-personality-from-one-event",
+      "kind": "memory",
+      "context": {
+        "records": [
+          {
+            "id": "experience:sample",
+            "type": "experience",
+            "title": "合成经历",
+            "period": "2026-10",
+            "revision": 1,
+            "body": "最近一周我工作很忙，但周末仍然见了朋友。"
+          }
+        ],
+        "user_decisions": []
+      },
+      "response": {
+        "schema_version": 1,
+        "memories": [
+          {
+            "title": "近期工作安排",
+            "detail": "最近一周工作很忙。",
+            "category": "pattern",
+            "horizon": "recent",
+            "period": "最近一周",
+            "sources": [
+              {
+                "record_id": "experience:sample",
+                "quote": "最近一周我工作很忙"
+              }
+            ]
+          }
+        ]
+      },
+      "expect_reject": true,
+      "expect_certainty": null
+    },
+    {
+      "id": "portrait-interpretation-stays-tentative",
+      "kind": "portrait",
+      "context": {
+        "memories": [
+          {
+            "id": "memory:sample",
+            "detail": "最近一周工作很忙。",
+            "status": "pending",
+            "horizon": "recent",
+            "period": "最近一周"
+          }
+        ]
+      },
+      "response": {
+        "schema_version": 1,
+        "items": [
+          {
+            "text": "最近工作较忙。",
+            "category": "focus",
+            "certainty": "observation",
+            "memory_ids": [
+              "memory:sample"
+            ]
+          }
+        ]
+      },
+      "expect_reject": false,
+      "expect_certainty": "hypothesis"
+    },
+    {
+      "id": "portrait-exact-user-confirmation",
+      "kind": "portrait",
+      "context": {
+        "memories": [
+          {
+            "id": "memory:sample",
+            "detail": "最近一周工作很忙。",
+            "status": "confirmed",
+            "horizon": "recent",
+            "period": "最近一周"
+          }
+        ]
+      },
+      "response": {
+        "schema_version": 1,
+        "items": [
+          {
+            "text": "最近一周工作很忙。",
+            "category": "focus",
+            "certainty": "observation",
+            "memory_ids": [
+              "memory:sample"
+            ]
+          }
+        ]
+      },
+      "expect_reject": false,
+      "expect_certainty": "observation"
+    },
+    {
+      "id": "portrait-no-unsupported-claim",
+      "kind": "portrait",
+      "context": {
+        "memories": [
+          {
+            "id": "memory:sample",
+            "detail": "最近一周工作很忙。",
+            "status": "pending",
+            "horizon": "recent",
+            "period": "最近一周"
+          }
+        ]
+      },
+      "response": {
+        "schema_version": 1,
+        "items": [
+          {
+            "text": "最近工作较忙。",
+            "category": "focus",
+            "certainty": "observation",
+            "memory_ids": [
+              "memory:missing"
+            ]
+          }
+        ]
+      },
+      "expect_reject": true,
+      "expect_certainty": null
+    },
+    {
+      "id": "month-current-only-is-not-comparison",
+      "kind": "month",
+      "context": {
+        "month": "2026-10",
+        "previous_month": "2026-09",
+        "records": [
+          {
+            "id": "experience:sample",
+            "type": "experience",
+            "title": "合成经历",
+            "period": "2026-10",
+            "revision": 1,
+            "body": "最近一周我工作很忙，但周末仍然见了朋友。"
+          },
+          {
+            "id": "entry:previous",
+            "title": "合成上月记录",
+            "period": "2026-09-20",
+            "body": "我主动约朋友见面。"
+          }
+        ]
+      },
+      "response": {
+        "schema_version": 1,
+        "items": [
+          {
+            "text": "【合成检查】本月工作忙碌期间仍保留与朋友相处的时间。",
+            "category": "events",
+            "comparison": false,
+            "sources": [
+              {
+                "record_id": "experience:sample",
+                "quote": "最近一周我工作很忙，但周末仍然见了朋友。"
+              }
+            ]
+          }
+        ]
+      },
+      "expect_reject": false,
+      "expect_certainty": null
+    },
+    {
+      "id": "month-comparison-needs-previous",
+      "kind": "month",
+      "context": {
+        "month": "2026-10",
+        "previous_month": "2026-09",
+        "records": [
+          {
+            "id": "experience:sample",
+            "type": "experience",
+            "title": "合成经历",
+            "period": "2026-10",
+            "revision": 1,
+            "body": "最近一周我工作很忙，但周末仍然见了朋友。"
+          },
+          {
+            "id": "entry:previous",
+            "title": "合成上月记录",
+            "period": "2026-09-20",
+            "body": "我主动约朋友见面。"
+          }
+        ]
+      },
+      "response": {
+        "schema_version": 1,
+        "items": [
+          {
+            "text": "【合成检查】本月工作忙碌期间仍保留与朋友相处的时间。",
+            "category": "events",
+            "comparison": true,
+            "sources": [
+              {
+                "record_id": "experience:sample",
+                "quote": "最近一周我工作很忙，但周末仍然见了朋友。"
+              }
+            ]
+          }
+        ]
+      },
+      "expect_reject": true,
+      "expect_certainty": null
+    },
+    {
+      "id": "month-two-period-evidence",
+      "kind": "month",
+      "context": {
+        "month": "2026-10",
+        "previous_month": "2026-09",
+        "records": [
+          {
+            "id": "experience:sample",
+            "type": "experience",
+            "title": "合成经历",
+            "period": "2026-10",
+            "revision": 1,
+            "body": "最近一周我工作很忙，但周末仍然见了朋友。"
+          },
+          {
+            "id": "entry:previous",
+            "title": "合成上月记录",
+            "period": "2026-09-20",
+            "body": "我主动约朋友见面。"
+          }
+        ]
+      },
+      "response": {
+        "schema_version": 1,
+        "items": [
+          {
+            "text": "【合成检查】本月工作忙碌期间仍保留与朋友相处的时间。",
+            "category": "events",
+            "comparison": true,
+            "sources": [
+              {
+                "record_id": "experience:sample",
+                "quote": "最近一周我工作很忙，但周末仍然见了朋友。"
+              },
+              {
+                "record_id": "entry:previous",
+                "quote": "我主动约朋友见面。"
+              }
+            ]
+          }
+        ]
+      },
+      "expect_reject": false,
+      "expect_certainty": null
+    }
+  ]
+}
