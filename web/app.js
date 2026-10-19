@@ -52,6 +52,7 @@ const state = {
   view: "record",
   day: "",
   today: "",
+  version: "—",
   month: new Date(),
   data: null,
   settings: { timezone: "Asia/Shanghai", ai_mode: "off" },
@@ -370,7 +371,7 @@ function renderSettings() {
       )
       .join(
         "",
-      )}</select><small>更改显示时区会调整时间的呈现，历史记录的所属日期保持原样。</small></div></section><section class="settings-section"><h2>数据与备份</h2><p>正式记录独立保存在本机数据库中。浏览器缓存可以清理，数据目录需要妥善保管。</p><div class="path-info"><strong>日记目录</strong><br>${escapeHTML(s.data_dir)}<br><strong>当前备份目录</strong><br>${escapeHTML(s.effective_backup_dir)}<br><strong>最近备份</strong> · ${s.last_backup_at ? escapeHTML(s.last_backup_at.split(" ")[0]) : "尚未创建"}</div>${s.backup_error ? `<div class="notice error">${escapeHTML(s.backup_error)}</div>` : ""}<div class="form-grid"><div class="form-field"><label for="backup-dir">备份目录</label><input id="backup-dir" name="backup_dir" value="${escapeHTML(s.backup_dir)}" placeholder="留空使用默认目录"><small>可以填写其他磁盘的完整路径，帮助应对本机磁盘故障。</small></div><div class="form-field"><label for="backup-keep">保留最近的备份数量</label><input type="number" id="backup-keep" name="backup_keep" min="2" max="100" value="${s.backup_keep}"></div></div><div class="setting-actions"><button type="button" id="backup-now" class="secondary-button">${icon("archive")}立即备份</button><button type="button" data-export="json" class="secondary-button">${icon("download")}导出完整备份</button><button type="button" data-export="markdown" class="secondary-button">导出 Markdown</button><button type="button" id="import-open" class="text-button">导入备份 ↗</button><input id="import-file" type="file" accept=".json,application/json" hidden></div><div id="backup-list"></div><p class="privacy-footnote">每天发生变更后会自动创建一份数据库快照。同一磁盘上的副本无法应对磁盘损坏，建议定期导出到其他磁盘。本版日记数据库未额外加密，请同时保护好 Windows 账户与磁盘。</p></section><div class="settings-bottom"><button type="submit" class="primary-button">保存设置 ${icon("check")}</button><small>拾光 v1.0 · 本机运行，无遥测</small></div></form><section class="settings-section"><button id="shutdown" class="text-button">退出拾光本地服务</button><p class="privacy-footnote">关闭网页后，本地服务仍可整理已保存的日记。退出服务后，双击「启动拾光」即可重新打开。</p></section>`;
+      )}</select><small>更改显示时区会调整时间的呈现，历史记录的所属日期保持原样。</small></div></section><section class="settings-section"><h2>数据与备份</h2><p>正式记录独立保存在本机数据库中。浏览器缓存可以清理，数据目录需要妥善保管。</p><div class="path-info"><strong>日记目录</strong><br>${escapeHTML(s.data_dir)}<br><strong>当前备份目录</strong><br>${escapeHTML(s.effective_backup_dir)}<br><strong>最近备份</strong> · ${s.last_backup_at ? escapeHTML(s.last_backup_at.split(" ")[0]) : "尚未创建"}</div>${s.backup_error ? `<div class="notice error">${escapeHTML(s.backup_error)}</div>` : ""}<div class="form-grid"><div class="form-field"><label for="backup-dir">备份目录</label><input id="backup-dir" name="backup_dir" value="${escapeHTML(s.backup_dir)}" placeholder="留空使用默认目录"><small>可以填写其他磁盘的完整路径，帮助应对本机磁盘故障。</small></div><div class="form-field"><label for="backup-keep">保留最近的备份数量</label><input type="number" id="backup-keep" name="backup_keep" min="2" max="100" value="${s.backup_keep}"></div></div><div class="setting-actions"><button type="button" id="backup-now" class="secondary-button">${icon("archive")}立即备份</button><button type="button" data-export="json" class="secondary-button">${icon("download")}导出完整备份</button><button type="button" data-export="markdown" class="secondary-button">导出 Markdown</button><button type="button" id="import-open" class="text-button">导入备份 ↗</button><input id="import-file" type="file" accept=".json,application/json" hidden></div><div id="backup-list"></div><p class="privacy-footnote">每天发生变更后会自动创建一份数据库快照。同一磁盘上的副本无法应对磁盘损坏，建议定期导出到其他磁盘。本版日记数据库未额外加密，请同时保护好 Windows 账户与磁盘。</p></section><div class="settings-bottom"><button type="submit" class="primary-button">保存设置 ${icon("check")}</button><small>拾光 v${escapeHTML(state.version)} · 本机运行，无遥测</small></div></form><section class="settings-section"><button id="shutdown" class="text-button">退出拾光本地服务</button><p class="privacy-footnote">关闭网页后，本地服务仍可整理已保存的日记。退出服务后，双击「启动拾光」即可重新打开。</p></section>`;
   $("#settings-form").onsubmit = saveSettings;
   $("#ai-mode").onchange = updateModeHint;
   $("#test-ai").onclick = testAI;
@@ -887,6 +888,7 @@ async function init() {
   try {
     const boot = await api("/api/bootstrap");
     state.token = boot.token;
+    state.version = boot.version;
     state.today = boot.today;
     state.day = boot.today;
     state.month = dateAt(boot.today);

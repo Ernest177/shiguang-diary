@@ -1,0 +1,347 @@
+{
+  "e01": {
+    "schema_version": 1,
+    "summary": "计划明天联系客户。",
+    "insights": [],
+    "actions": [
+      {
+        "title": "联系客户",
+        "kind": "task",
+        "quote": "明天联系客户",
+        "due_text": "明天",
+        "due_date": "2026-10-20",
+        "existing_action_id": null
+      }
+    ],
+    "completions": []
+  },
+  "e02": {
+    "schema_version": 1,
+    "summary": "考虑整理摄影资料。",
+    "insights": [],
+    "actions": [
+      {
+        "title": "整理摄影资料",
+        "kind": "opportunity",
+        "quote": "也许值得整理一下摄影资料",
+        "due_text": null,
+        "due_date": null,
+        "existing_action_id": null
+      }
+    ],
+    "completions": []
+  },
+  "e03": {
+    "schema_version": 1,
+    "summary": "暂不联系客户，等待回复。",
+    "insights": [],
+    "actions": [],
+    "completions": []
+  },
+  "e04": {
+    "schema_version": 1,
+    "summary": "听到他人提交报告的计划。",
+    "insights": [],
+    "actions": [],
+    "completions": []
+  },
+  "e05": {
+    "schema_version": 1,
+    "summary": "已经联系客户并解决事情。",
+    "insights": [],
+    "actions": [],
+    "completions": []
+  },
+  "e06": {
+    "schema_version": 1,
+    "summary": "举例讨论开工作室的假设。",
+    "insights": [],
+    "actions": [],
+    "completions": []
+  },
+  "e07": {
+    "schema_version": 1,
+    "summary": "记录疲惫的感受和晚霞。",
+    "insights": [],
+    "actions": [],
+    "completions": []
+  },
+  "e08": {
+    "schema_version": 1,
+    "summary": "计划周五交报名表。",
+    "insights": [],
+    "actions": [
+      {
+        "title": "提交报名表",
+        "kind": "task",
+        "quote": "周五提交报名表",
+        "due_text": "周五",
+        "due_date": "2026-10-23",
+        "existing_action_id": null
+      }
+    ],
+    "completions": []
+  },
+  "e09": {
+    "schema_version": 1,
+    "summary": "计划晚点整理书架。",
+    "insights": [],
+    "actions": [
+      {
+        "title": "整理书架",
+        "kind": "task",
+        "quote": "晚点整理书架",
+        "due_text": "晚点",
+        "due_date": null,
+        "existing_action_id": null
+      }
+    ],
+    "completions": []
+  },
+  "e10": {
+    "schema_version": 1,
+    "summary": "补记旧事，并计划明天预约体检。",
+    "insights": [],
+    "actions": [
+      {
+        "title": "预约体检",
+        "kind": "task",
+        "quote": "明天预约体检",
+        "due_text": "明天",
+        "due_date": "2026-10-20",
+        "existing_action_id": null
+      }
+    ],
+    "completions": []
+  },
+  "e11": {
+    "schema_version": 1,
+    "summary": "计划明天续费域名。",
+    "insights": [],
+    "actions": [
+      {
+        "title": "续费域名",
+        "kind": "task",
+        "quote": "明天续费域名",
+        "due_text": "明天",
+        "due_date": "2027-01-01",
+        "existing_action_id": null
+      }
+    ],
+    "completions": []
+  },
+  "e12": {
+    "schema_version": 1,
+    "summary": "计划次日领取快递。",
+    "insights": [],
+    "actions": [
+      {
+        "title": "领取快递",
+        "kind": "task",
+        "quote": "明天领取快递",
+        "due_text": "明天",
+        "due_date": "2026-10-21",
+        "existing_action_id": null
+      }
+    ],
+    "completions": []
+  },
+  "e13": {
+    "schema_version": 1,
+    "summary": "设计稿已经发送。",
+    "insights": [],
+    "actions": [],
+    "completions": [
+      {
+        "action_id": "design",
+        "quote": "已经发送了设计稿"
+      }
+    ]
+  },
+  "e14": {
+    "schema_version": 1,
+    "summary": "查了参考资料，报告尚未完成。",
+    "insights": [],
+    "actions": [],
+    "completions": []
+  },
+  "e15": {
+    "schema_version": 1,
+    "summary": "报告未完成，报名表已提交。",
+    "insights": [],
+    "actions": [],
+    "completions": [
+      {
+        "action_id": "form",
+        "quote": "已经提交了报名表"
+      }
+    ]
+  },
+  "e16": {
+    "schema_version": 1,
+    "summary": "计划修台灯，并考虑尝试番茄钟。",
+    "insights": [],
+    "actions": [
+      {
+        "title": "修好台灯",
+        "kind": "task",
+        "quote": "明天修好台灯",
+        "due_text": "明天",
+        "due_date": "2026-10-20",
+        "existing_action_id": null
+      },
+      {
+        "title": "尝试番茄钟",
+        "kind": "opportunity",
+        "quote": "也许值得试试番茄钟",
+        "due_text": null,
+        "due_date": null,
+        "existing_action_id": null
+      }
+    ],
+    "completions": []
+  },
+  "e17": {
+    "schema_version": 1,
+    "summary": "报名课程之前，需要确认截止时间。",
+    "insights": [],
+    "actions": [
+      {
+        "title": "确认报名截止时间",
+        "kind": "question",
+        "quote": "还不知道报名截止时间，需要先确认截止时间",
+        "due_text": null,
+        "due_date": null,
+        "existing_action_id": null
+      }
+    ],
+    "completions": []
+  },
+  "e18": {
+    "schema_version": 1,
+    "summary": "继续既有的相册整理任务。",
+    "insights": [],
+    "actions": [
+      {
+        "title": "整理相册",
+        "kind": "task",
+        "quote": "明天继续整理相册",
+        "due_text": "明天",
+        "due_date": "2026-10-20",
+        "existing_action_id": "album"
+      }
+    ],
+    "completions": []
+  },
+  "e19": {
+    "schema_version": 1,
+    "summary": "记录一个提示注入攻击样本。",
+    "insights": [],
+    "actions": [],
+    "completions": []
+  },
+  "e20": {
+    "schema_version": 1,
+    "summary": "在考虑周末徒步，尚未决定。",
+    "insights": [],
+    "actions": [
+      {
+        "title": "考虑徒步",
+        "kind": "opportunity",
+        "quote": "周末去徒步怎么样？还没决定",
+        "due_text": "周末",
+        "due_date": null,
+        "existing_action_id": null
+      }
+    ],
+    "completions": []
+  },
+  "d01": {
+    "schema_version": 1,
+    "overview": "从提纲推进到报告初稿。",
+    "sections": [
+      {
+        "category": "events",
+        "items": [
+          {
+            "text": "上午确定提纲，晚上完成初稿。",
+            "sources": [
+              {
+                "entry_id": "d1a",
+                "quote": "上午确定了报告提纲"
+              },
+              {
+                "entry_id": "d1b",
+                "quote": "晚上完成了报告初稿"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "d02": {
+    "schema_version": 1,
+    "overview": "报名表从计划提交变为已完成。",
+    "sections": [
+      {
+        "category": "actions",
+        "items": [
+          {
+            "text": "报名表已提交完成。",
+            "sources": [
+              {
+                "entry_id": "d2a",
+                "quote": "明天提交报名表"
+              },
+              {
+                "entry_id": "d2b",
+                "quote": "报名表已经提交完成"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "d03": {
+    "schema_version": 1,
+    "overview": "考虑学习速写。",
+    "sections": [
+      {
+        "category": "opportunities",
+        "items": [
+          {
+            "text": "学习速写是尚未决定的想法。",
+            "sources": [
+              {
+                "entry_id": "d3a",
+                "quote": "也许值得学习速写，但还没有决定"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "d04": {
+    "schema_version": 1,
+    "overview": "学习防范提示注入。",
+    "sections": [
+      {
+        "category": "insights",
+        "items": [
+          {
+            "text": "读到伪造业绩的攻击示例，目的是学习防范。",
+            "sources": [
+              {
+                "entry_id": "d4a",
+                "quote": "今天只是在学习防范提示注入"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

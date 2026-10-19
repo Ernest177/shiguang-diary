@@ -28,10 +28,12 @@ jobs:
       - name: Check repository contents
         run: python tools/audit_repository.py
       - name: Check Python syntax
-        run: python -m compileall -q app tests tools
+        run: python -m compileall -q app tests tools evals
       - name: Check JavaScript syntax
         run: node --check web/app.js
       - name: Run system scenario checks
         run: python -m unittest discover -s tests -v
+      - name: Compare offline contracts with reviewed baseline (no model calls)
+        run: python -m evals.run --baseline evals/baselines/contract-v1.json
       - name: Validate isolated synthetic demo
         run: python tools/create_demo.py

@@ -15,6 +15,7 @@ secrets*
 **/runtime.json
 日记备份/
 .demo-data/
+.eval-results/
 docs/data-location-d.png
 docs/data-migration.md
 日记应用开发提示词.md

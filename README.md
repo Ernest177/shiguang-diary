@@ -8,7 +8,7 @@
 
 ![拾光电脑端首页：日期导航、记录入口与每日整理](docs/preview.png)
 
-**给评审者的入口**：[项目复盘](docs/case-study.md) · [架构与数据流](docs/architecture.md) · [关键取舍](docs/decisions.md) · [验证依据](docs/verification.md) · [简历与面试素材](docs/interview-guide.md)
+**给评审者的入口**：[项目复盘](docs/case-study.md) · [架构与数据流](docs/architecture.md) · [迭代与评测](docs/iteration.md) · [版本记录](CHANGELOG.md) · [路线图](ROADMAP.md) · [验证依据](docs/verification.md) · [简历与面试素材](docs/interview-guide.md)
 
 ## 为什么做这个项目
 
@@ -102,23 +102,38 @@ flowchart LR
 - 密钥绑定当前地址，更换地址不会自动把旧密钥交给新提供方。
 - 本地失败不会自动回退到云端，按记录排除分析的内容不会进入新的分析上下文。
 
-当前适配器尚未配置厂商专用的思考开关与 `response_format`，结构化结果依靠提示词和应用校验。模型默认思考可能影响耗时与花费，真实服务需单独验证。模板和校验见 [app/ai.py](app/ai.py)。
+当前适配器尚未配置厂商专用的思考开关与 `response_format`，结构化结果依靠提示词和应用校验。模型默认思考可能影响耗时与花费，真实服务需单独验证。模板见 [app/prompts.py](app/prompts.py)，校验见 [app/ai.py](app/ai.py)。
+
+## 持续迭代与评测
+
+当前版本 **1.1.0** 为持续改进建立基线：20 条单条分析 + 4 组每日回顾的公开合成样例，分别记录模型原始错误与应用校验后的结果。
+
+```bash
+# 默认离线，不联网、不读取个人日记，不需要密钥
+python -m evals.run --baseline evals/baselines/contract-v1.json
+```
+
+报告生成到 `.eval-results/`，包括误提 / 漏提 / 误关闭、日期与已有行动关联、引用与来源覆盖。应用、提示词、数据集、评分器和门禁分别记录版本；可拒绝不可比的实验，并逐例检查退步。GitHub Actions 自动执行离线回归。
+
+**离线合约响应是手写替身，得分不是模型准确率。** 真实模型评测需要显式运行，只发送同一组合成文本，记录耗时和提供方用量；当前尚未运行真实质量基线。具体命令、计费边界、人工复核和发布流程见[迭代说明](docs/iteration.md)。
 
 ## 技术结构
 
 ```text
 app/server.py       本机接口、访问检查与生命周期
 app/store.py        数据模型、事务、版本与备份恢复
-app/ai.py           模型适配、提示词、校验与后台队列
+app/ai.py           模型适配、校验与后台队列
+app/prompts.py      有版本与哈希登记的提示词
 web/                本地 HTML / CSS / JavaScript
 tests/              存储、竞态、恢复与 HTTP 场景
+evals/              合成标注、合约基线、真实评测与比较器
 tools/              合成演示数据与仓库内容检查
 docs/               复盘、架构、取舍与验证依据
 ```
 
 ## 验证与边界
 
-本地基线：**25 项自动检查通过**，并实际检查 Windows 启动、浏览器保存、刷新恢复、编辑历史、检索、行动流转和回顾。GitHub Actions 在 Windows / Ubuntu 与 Python 3.10 / 3.12 组合下复现检查，结果以顶部链接为准。
+本地基线：**37 项自动检查 + 24 个离线合约样例通过**；v1.0 还实际检查了 Windows 启动、浏览器保存、刷新恢复、编辑历史、检索、行动流转和回顾。GitHub Actions 在 Windows / Ubuntu 与 Python 3.10 / 3.12 组合下复现检查，结果以顶部链接为准。
 
 模型替身验证协议、引用和流程，不证明真实推理质量。本项目尚未发布真实模型准确率、生产规模或性能收益。[验证说明](docs/verification.md)
 
@@ -131,11 +146,8 @@ docs/               复盘、架构、取舍与验证依据
 
 本项目在 AI 辅助下实现与迭代，文档区分可复现机制、人工检查和待评估能力。
 
-## 后续方向
+## 下一阶段
 
-1. 建立脱敏合成语义评估集，分别测量漏提、误提、误关闭和事实支持。
-2. 添加提供方 JSON 输出、思考开关、用量记录与每日整理防抖。
-3. 支持长内容分段聚合与更细粒度的失效处理。
-4. 身份验证、冲突与隐私边界明确后，再考虑跨设备同步。
+先用当前 Aliyun 配置建立真实质量、耗时和用量基线，再据此调整参数与提示词。随后补用户反馈入口和数据升级验证。每阶段的痛点、完成依据与实现状态见[产品路线图](ROADMAP.md)。
 
 贡献方式见 [CONTRIBUTING.md](CONTRIBUTING.md)，数据与凭证边界见 [SECURITY.md](SECURITY.md)。

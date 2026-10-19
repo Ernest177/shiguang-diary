@@ -1,0 +1,1175 @@
+{
+  "report_version": 1,
+  "mode": "contract",
+  "app_version": "1.1.0",
+  "prompts": {
+    "entry": {
+      "version": "entry.v1",
+      "sha256": "4ae2f671dbaa4bad0f25724ede26158f4a1296def251c1e1ad613f6cf5d596f7"
+    },
+    "day": {
+      "version": "day.v1",
+      "sha256": "97056d1139f06c733dfce832b9ff5719ec2411ee7e3213da79f0e57957b791e3"
+    }
+  },
+  "corpus": {
+    "version": "synthetic.v1",
+    "sha256": "525151f83f354e3f1d11b095f4b58e71723d9d06118ca50568c08083958b67fc"
+  },
+  "fixture_sha256": "7fe2e874c2138468ff66a07ed93180169344e53b2afd7a45fc2882eaf284658b",
+  "scorer_version": "evidence.v1",
+  "gate_version": "quality.v1",
+  "selected_ids": [
+    "e01",
+    "e02",
+    "e03",
+    "e04",
+    "e05",
+    "e06",
+    "e07",
+    "e08",
+    "e09",
+    "e10",
+    "e11",
+    "e12",
+    "e13",
+    "e14",
+    "e15",
+    "e16",
+    "e17",
+    "e18",
+    "e19",
+    "e20",
+    "d01",
+    "d02",
+    "d03",
+    "d04"
+  ],
+  "model": "handwritten-contract-fixture",
+  "request_options": {
+    "temperature": 0.2,
+    "stream": false,
+    "response_format": null,
+    "enable_thinking": null
+  },
+  "metrics": {
+    "cases": 24,
+    "entry_cases": 20,
+    "day_cases": 4,
+    "schema_valid": 24,
+    "request_errors": 0,
+    "schema_valid_rate": 1.0,
+    "raw_quote_valid_rate": 1.0,
+    "day_source_coverage": 1.0,
+    "raw": {
+      "tp": 12,
+      "fp": 0,
+      "fn": 0,
+      "matched": 12,
+      "correct_dates": 12,
+      "correct_links": 12,
+      "critical_false_tasks": 0,
+      "unsupported_actions": 0,
+      "action_count": 12,
+      "correct_completions": 2,
+      "unexpected_completions": 0,
+      "expected_completions": 2,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "date_accuracy": 1.0,
+      "link_accuracy": 1.0,
+      "completion_recall": 1.0
+    },
+    "final": {
+      "tp": 12,
+      "fp": 0,
+      "fn": 0,
+      "matched": 12,
+      "correct_dates": 12,
+      "correct_links": 12,
+      "critical_false_tasks": 0,
+      "unsupported_actions": 0,
+      "action_count": 12,
+      "correct_completions": 2,
+      "unexpected_completions": 0,
+      "expected_completions": 2,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "date_accuracy": 1.0,
+      "link_accuracy": 1.0,
+      "completion_recall": 1.0
+    }
+  },
+  "gate": {
+    "passed": true,
+    "reasons": []
+  },
+  "samples": [
+    {
+      "id": "e01",
+      "kind": "entry",
+      "tags": [
+        "承诺",
+        "相对日期"
+      ],
+      "error": null,
+      "score": {
+        "schema_valid": 1,
+        "validation_error": null,
+        "raw_quotes": {
+          "quote_count": 1,
+          "valid_quotes": 1
+        },
+        "final_quotes": {
+          "quote_count": 1,
+          "valid_quotes": 1
+        },
+        "raw": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "matched": 1,
+          "correct_dates": 1,
+          "correct_links": 1,
+          "critical_false_tasks": 0,
+          "unsupported_actions": 0,
+          "action_count": 1,
+          "correct_completions": 0,
+          "unexpected_completions": 0,
+          "expected_completions": 0
+        },
+        "final": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "matched": 1,
+          "correct_dates": 1,
+          "correct_links": 1,
+          "critical_false_tasks": 0,
+          "unsupported_actions": 0,
+          "action_count": 1,
+          "correct_completions": 0,
+          "unexpected_completions": 0,
+          "expected_completions": 0
+        }
+      }
+    },
+    {
+      "id": "e02",
+      "kind": "entry",
+      "tags": [
+        "建议"
+      ],
+      "error": null,
+      "score": {
+        "schema_valid": 1,
+        "validation_error": null,
+        "raw_quotes": {
+          "quote_count": 1,
+          "valid_quotes": 1
+        },
+        "final_quotes": {
+          "quote_count": 1,
+          "valid_quotes": 1
+        },
+        "raw": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "matched": 1,
+          "correct_dates": 1,
+          "correct_links": 1,
+          "critical_false_tasks": 0,
+          "unsupported_actions": 0,
+          "action_count": 1,
+          "correct_completions": 0,
+          "unexpected_completions": 0,
+          "expected_completions": 0
+        },
+        "final": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "matched": 1,
+          "correct_dates": 1,
+          "correct_links": 1,
+          "critical_false_tasks": 0,
+          "unsupported_actions": 0,
+          "action_count": 1,
+          "correct_completions": 0,
+          "unexpected_completions": 0,
+          "expected_completions": 0
+        }
+      }
+    },
+    {
+      "id": "e03",
+      "kind": "entry",
+      "tags": [
+        "否定"
+      ],
+      "error": null,
+      "score": {
+        "schema_valid": 1,
+        "validation_error": null,
+        "raw_quotes": {
+          "quote_count": 0,
+          "valid_quotes": 0
+        },
+        "final_quotes": {
+          "quote_count": 0,
+          "valid_quotes": 0
+        },
+        "raw": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "matched": 0,
+          "correct_dates": 0,
+          "correct_links": 0,
+          "critical_false_tasks": 0,
+          "unsupported_actions": 0,
+          "action_count": 0,
+          "correct_completions": 0,
+          "unexpected_completions": 0,
+          "expected_completions": 0
+        },
+        "final": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "matched": 0,
+          "correct_dates": 0,
+          "correct_links": 0,
+          "critical_false_tasks": 0,
+          "unsupported_actions": 0,
+          "action_count": 0,
+          "correct_completions": 0,
+          "unexpected_completions": 0,
+          "expected_completions": 0
+        }
+      }
+    },
+    {
+      "id": "e04",
+      "kind": "entry",
+      "tags": [
+        "他人计划"
+      ],
+      "error": null,
+      "score": {
+        "schema_valid": 1,
+        "validation_error": null,
+        "raw_quotes": {
+          "quote_count": 0,
+          "valid_quotes": 0
+        },
+        "final_quotes": {
+          "quote_count": 0,
+          "valid_quotes": 0
+        },
+        "raw": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "matched": 0,
+          "correct_dates": 0,
+          "correct_links": 0,
+          "critical_false_tasks": 0,
+          "unsupported_actions": 0,
+          "action_count": 0,
+          "correct_completions": 0,
+          "unexpected_completions": 0,
+          "expected_completions": 0
+        },
+        "final": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "matched": 0,
+          "correct_dates": 0,
+          "correct_links": 0,
+          "critical_false_tasks": 0,
+          "unsupported_actions": 0,
+          "action_count": 0,
+          "correct_completions": 0,
+          "unexpected_completions": 0,
+          "expected_completions": 0
+        }
+      }
+    },
+    {
+      "id": "e05",
+      "kind": "entry",
+      "tags": [
+        "已完成"
+      ],
+      "error": null,
+      "score": {
+        "schema_valid": 1,
+        "validation_error": null,
+        "raw_quotes": {
+          "quote_count": 0,
+          "valid_quotes": 0
+        },
+        "final_quotes": {
+          "quote_count": 0,
+          "valid_quotes": 0
+        },
+        "raw": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "matched": 0,
+          "correct_dates": 0,
+          "correct_links": 0,
+          "critical_false_tasks": 0,
+          "unsupported_actions": 0,
+          "action_count": 0,
+          "correct_completions": 0,
+          "unexpected_completions": 0,
+          "expected_completions": 0
+        },
+        "final": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "matched": 0,
+          "correct_dates": 0,
+          "correct_links": 0,
+          "critical_false_tasks": 0,
+          "unsupported_actions": 0,
+          "action_count": 0,
+          "correct_completions": 0,
+          "unexpected_completions": 0,
+          "expected_completions": 0
+        }
+      }
+    },
+    {
+      "id": "e06",
+      "kind": "entry",
+      "tags": [
+        "假设",
+        "举例"
+      ],
+      "error": null,
+      "score": {
+        "schema_valid": 1,
+        "validation_error": null,
+        "raw_quotes": {
+          "quote_count": 0,
+          "valid_quotes": 0
+        },
+        "final_quotes": {
+          "quote_count": 0,
+          "valid_quotes": 0
+        },
+        "raw": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "matched": 0,
+          "correct_dates": 0,
+          "correct_links": 0,
+          "critical_false_tasks": 0,
+          "unsupported_actions": 0,
+          "action_count": 0,
+          "correct_completions": 0,
+          "unexpected_completions": 0,
+          "expected_completions": 0
+        },
+        "final": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "matched": 0,
+          "correct_dates": 0,
+          "correct_links": 0,
+          "critical_false_tasks": 0,
+          "unsupported_actions": 0,
+          "action_count": 0,
+          "correct_completions": 0,
+          "unexpected_completions": 0,
+          "expected_completions": 0
+        }
+      }
+    },
+    {
+      "id": "e07",
+      "kind": "entry",
+      "tags": [
+        "情绪"
+      ],
+      "error": null,
+      "score": {
+        "schema_valid": 1,
+        "validation_error": null,
+        "raw_quotes": {
+          "quote_count": 0,
+          "valid_quotes": 0
+        },
+        "final_quotes": {
+          "quote_count": 0,
+          "valid_quotes": 0
+        },
+        "raw": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "matched": 0,
+          "correct_dates": 0,
+          "correct_links": 0,
+          "critical_false_tasks": 0,
+          "unsupported_actions": 0,
+          "action_count": 0,
+          "correct_completions": 0,
+          "unexpected_completions": 0,
+          "expected_completions": 0
+        },
+        "final": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "matched": 0,
+          "correct_dates": 0,
+          "correct_links": 0,
+          "critical_false_tasks": 0,
+          "unsupported_actions": 0,
+          "action_count": 0,
+          "correct_completions": 0,
+          "unexpected_completions": 0,
+          "expected_completions": 0
+        }
+      }
+    },
+    {
+      "id": "e08",
+      "kind": "entry",
+      "tags": [
+        "星期日期"
+      ],
+      "error": null,
+      "score": {
+        "schema_valid": 1,
+        "validation_error": null,
+        "raw_quotes": {
+          "quote_count": 1,
+          "valid_quotes": 1
+        },
+        "final_quotes": {
+          "quote_count": 1,
+          "valid_quotes": 1
+        },
+        "raw": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "matched": 1,
+          "correct_dates": 1,
+          "correct_links": 1,
+          "critical_false_tasks": 0,
+          "unsupported_actions": 0,
+          "action_count": 1,
+          "correct_completions": 0,
+          "unexpected_completions": 0,
+          "expected_completions": 0
+        },
+        "final": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "matched": 1,
+          "correct_dates": 1,
+          "correct_links": 1,
+          "critical_false_tasks": 0,
+          "unsupported_actions": 0,
+          "action_count": 1,
+          "correct_completions": 0,
+          "unexpected_completions": 0,
+          "expected_completions": 0
+        }
+      }
+    },
+    {
+      "id": "e09",
+      "kind": "entry",
+      "tags": [
+        "模糊日期"
+      ],
+      "error": null,
+      "score": {
+        "schema_valid": 1,
+        "validation_error": null,
+        "raw_quotes": {
+          "quote_count": 1,
+          "valid_quotes": 1
+        },
+        "final_quotes": {
+          "quote_count": 1,
+          "valid_quotes": 1
+        },
+        "raw": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "matched": 1,
+          "correct_dates": 1,
+          "correct_links": 1,
+          "critical_false_tasks": 0,
+          "unsupported_actions": 0,
+          "action_count": 1,
+          "correct_completions": 0,
+          "unexpected_completions": 0,
+          "expected_completions": 0
+        },
+        "final": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "matched": 1,
+          "correct_dates": 1,
+          "correct_links": 1,
+          "critical_false_tasks": 0,
+          "unsupported_actions": 0,
+          "action_count": 1,
+          "correct_completions": 0,
+          "unexpected_completions": 0,
+          "expected_completions": 0
+        }
+      }
+    },
+    {
+      "id": "e10",
+      "kind": "entry",
+      "tags": [
+        "补记",
+        "相对日期"
+      ],
+      "error": null,
+      "score": {
+        "schema_valid": 1,
+        "validation_error": null,
+        "raw_quotes": {
+          "quote_count": 1,
+          "valid_quotes": 1
+        },
+        "final_quotes": {
+          "quote_count": 1,
+          "valid_quotes": 1
+        },
+        "raw": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "matched": 1,
+          "correct_dates": 1,
+          "correct_links": 1,
+          "critical_false_tasks": 0,
+          "unsupported_actions": 0,
+          "action_count": 1,
+          "correct_completions": 0,
+          "unexpected_completions": 0,
+          "expected_completions": 0
+        },
+        "final": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "matched": 1,
+          "correct_dates": 1,
+          "correct_links": 1,
+          "critical_false_tasks": 0,
+          "unsupported_actions": 0,
+          "action_count": 1,
+          "correct_completions": 0,
+          "unexpected_completions": 0,
+          "expected_completions": 0
+        }
+      }
+    },
+    {
+      "id": "e11",
+      "kind": "entry",
+      "tags": [
+        "跨年"
+      ],
+      "error": null,
+      "score": {
+        "schema_valid": 1,
+        "validation_error": null,
+        "raw_quotes": {
+          "quote_count": 1,
+          "valid_quotes": 1
+        },
+        "final_quotes": {
+          "quote_count": 1,
+          "valid_quotes": 1
+        },
+        "raw": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "matched": 1,
+          "correct_dates": 1,
+          "correct_links": 1,
+          "critical_false_tasks": 0,
+          "unsupported_actions": 0,
+          "action_count": 1,
+          "correct_completions": 0,
+          "unexpected_completions": 0,
+          "expected_completions": 0
+        },
+        "final": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "matched": 1,
+          "correct_dates": 1,
+          "correct_links": 1,
+          "critical_false_tasks": 0,
+          "unsupported_actions": 0,
+          "action_count": 1,
+          "correct_completions": 0,
+          "unexpected_completions": 0,
+          "expected_completions": 0
+        }
+      }
+    },
+    {
+      "id": "e12",
+      "kind": "entry",
+      "tags": [
+        "时区",
+        "跨日"
+      ],
+      "error": null,
+      "score": {
+        "schema_valid": 1,
+        "validation_error": null,
+        "raw_quotes": {
+          "quote_count": 1,
+          "valid_quotes": 1
+        },
+        "final_quotes": {
+          "quote_count": 1,
+          "valid_quotes": 1
+        },
+        "raw": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "matched": 1,
+          "correct_dates": 1,
+          "correct_links": 1,
+          "critical_false_tasks": 0,
+          "unsupported_actions": 0,
+          "action_count": 1,
+          "correct_completions": 0,
+          "unexpected_completions": 0,
+          "expected_completions": 0
+        },
+        "final": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "matched": 1,
+          "correct_dates": 1,
+          "correct_links": 1,
+          "critical_false_tasks": 0,
+          "unsupported_actions": 0,
+          "action_count": 1,
+          "correct_completions": 0,
+          "unexpected_completions": 0,
+          "expected_completions": 0
+        }
+      }
+    },
+    {
+      "id": "e13",
+      "kind": "entry",
+      "tags": [
+        "明确完成"
+      ],
+      "error": null,
+      "score": {
+        "schema_valid": 1,
+        "validation_error": null,
+        "raw_quotes": {
+          "quote_count": 1,
+          "valid_quotes": 1
+        },
+        "final_quotes": {
+          "quote_count": 1,
+          "valid_quotes": 1
+        },
+        "raw": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "matched": 0,
+          "correct_dates": 0,
+          "correct_links": 0,
+          "critical_false_tasks": 0,
+          "unsupported_actions": 0,
+          "action_count": 0,
+          "correct_completions": 1,
+          "unexpected_completions": 0,
+          "expected_completions": 1
+        },
+        "final": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "matched": 0,
+          "correct_dates": 0,
+          "correct_links": 0,
+          "critical_false_tasks": 0,
+          "unsupported_actions": 0,
+          "action_count": 0,
+          "correct_completions": 1,
+          "unexpected_completions": 0,
+          "expected_completions": 1
+        }
+      }
+    },
+    {
+      "id": "e14",
+      "kind": "entry",
+      "tags": [
+        "未完成"
+      ],
+      "error": null,
+      "score": {
+        "schema_valid": 1,
+        "validation_error": null,
+        "raw_quotes": {
+          "quote_count": 0,
+          "valid_quotes": 0
+        },
+        "final_quotes": {
+          "quote_count": 0,
+          "valid_quotes": 0
+        },
+        "raw": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "matched": 0,
+          "correct_dates": 0,
+          "correct_links": 0,
+          "critical_false_tasks": 0,
+          "unsupported_actions": 0,
+          "action_count": 0,
+          "correct_completions": 0,
+          "unexpected_completions": 0,
+          "expected_completions": 0
+        },
+        "final": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "matched": 0,
+          "correct_dates": 0,
+          "correct_links": 0,
+          "critical_false_tasks": 0,
+          "unsupported_actions": 0,
+          "action_count": 0,
+          "correct_completions": 0,
+          "unexpected_completions": 0,
+          "expected_completions": 0
+        }
+      }
+    },
+    {
+      "id": "e15",
+      "kind": "entry",
+      "tags": [
+        "混合状态"
+      ],
+      "error": null,
+      "score": {
+        "schema_valid": 1,
+        "validation_error": null,
+        "raw_quotes": {
+          "quote_count": 1,
+          "valid_quotes": 1
+        },
+        "final_quotes": {
+          "quote_count": 1,
+          "valid_quotes": 1
+        },
+        "raw": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "matched": 0,
+          "correct_dates": 0,
+          "correct_links": 0,
+          "critical_false_tasks": 0,
+          "unsupported_actions": 0,
+          "action_count": 0,
+          "correct_completions": 1,
+          "unexpected_completions": 0,
+          "expected_completions": 1
+        },
+        "final": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "matched": 0,
+          "correct_dates": 0,
+          "correct_links": 0,
+          "critical_false_tasks": 0,
+          "unsupported_actions": 0,
+          "action_count": 0,
+          "correct_completions": 1,
+          "unexpected_completions": 0,
+          "expected_completions": 1
+        }
+      }
+    },
+    {
+      "id": "e16",
+      "kind": "entry",
+      "tags": [
+        "多行动",
+        "建议"
+      ],
+      "error": null,
+      "score": {
+        "schema_valid": 1,
+        "validation_error": null,
+        "raw_quotes": {
+          "quote_count": 2,
+          "valid_quotes": 2
+        },
+        "final_quotes": {
+          "quote_count": 2,
+          "valid_quotes": 2
+        },
+        "raw": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 0,
+          "matched": 2,
+          "correct_dates": 2,
+          "correct_links": 2,
+          "critical_false_tasks": 0,
+          "unsupported_actions": 0,
+          "action_count": 2,
+          "correct_completions": 0,
+          "unexpected_completions": 0,
+          "expected_completions": 0
+        },
+        "final": {
+          "tp": 2,
+          "fp": 0,
+          "fn": 0,
+          "matched": 2,
+          "correct_dates": 2,
+          "correct_links": 2,
+          "critical_false_tasks": 0,
+          "unsupported_actions": 0,
+          "action_count": 2,
+          "correct_completions": 0,
+          "unexpected_completions": 0,
+          "expected_completions": 0
+        }
+      }
+    },
+    {
+      "id": "e17",
+      "kind": "entry",
+      "tags": [
+        "澄清"
+      ],
+      "error": null,
+      "score": {
+        "schema_valid": 1,
+        "validation_error": null,
+        "raw_quotes": {
+          "quote_count": 1,
+          "valid_quotes": 1
+        },
+        "final_quotes": {
+          "quote_count": 1,
+          "valid_quotes": 1
+        },
+        "raw": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "matched": 1,
+          "correct_dates": 1,
+          "correct_links": 1,
+          "critical_false_tasks": 0,
+          "unsupported_actions": 0,
+          "action_count": 1,
+          "correct_completions": 0,
+          "unexpected_completions": 0,
+          "expected_completions": 0
+        },
+        "final": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "matched": 1,
+          "correct_dates": 1,
+          "correct_links": 1,
+          "critical_false_tasks": 0,
+          "unsupported_actions": 0,
+          "action_count": 1,
+          "correct_completions": 0,
+          "unexpected_completions": 0,
+          "expected_completions": 0
+        }
+      }
+    },
+    {
+      "id": "e18",
+      "kind": "entry",
+      "tags": [
+        "已有行动"
+      ],
+      "error": null,
+      "score": {
+        "schema_valid": 1,
+        "validation_error": null,
+        "raw_quotes": {
+          "quote_count": 1,
+          "valid_quotes": 1
+        },
+        "final_quotes": {
+          "quote_count": 1,
+          "valid_quotes": 1
+        },
+        "raw": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "matched": 1,
+          "correct_dates": 1,
+          "correct_links": 1,
+          "critical_false_tasks": 0,
+          "unsupported_actions": 0,
+          "action_count": 1,
+          "correct_completions": 0,
+          "unexpected_completions": 0,
+          "expected_completions": 0
+        },
+        "final": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "matched": 1,
+          "correct_dates": 1,
+          "correct_links": 1,
+          "critical_false_tasks": 0,
+          "unsupported_actions": 0,
+          "action_count": 1,
+          "correct_completions": 0,
+          "unexpected_completions": 0,
+          "expected_completions": 0
+        }
+      }
+    },
+    {
+      "id": "e19",
+      "kind": "entry",
+      "tags": [
+        "提示注入",
+        "引用边界"
+      ],
+      "error": null,
+      "score": {
+        "schema_valid": 1,
+        "validation_error": null,
+        "raw_quotes": {
+          "quote_count": 0,
+          "valid_quotes": 0
+        },
+        "final_quotes": {
+          "quote_count": 0,
+          "valid_quotes": 0
+        },
+        "raw": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "matched": 0,
+          "correct_dates": 0,
+          "correct_links": 0,
+          "critical_false_tasks": 0,
+          "unsupported_actions": 0,
+          "action_count": 0,
+          "correct_completions": 0,
+          "unexpected_completions": 0,
+          "expected_completions": 0
+        },
+        "final": {
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "matched": 0,
+          "correct_dates": 0,
+          "correct_links": 0,
+          "critical_false_tasks": 0,
+          "unsupported_actions": 0,
+          "action_count": 0,
+          "correct_completions": 0,
+          "unexpected_completions": 0,
+          "expected_completions": 0
+        }
+      }
+    },
+    {
+      "id": "e20",
+      "kind": "entry",
+      "tags": [
+        "未承诺"
+      ],
+      "error": null,
+      "score": {
+        "schema_valid": 1,
+        "validation_error": null,
+        "raw_quotes": {
+          "quote_count": 1,
+          "valid_quotes": 1
+        },
+        "final_quotes": {
+          "quote_count": 1,
+          "valid_quotes": 1
+        },
+        "raw": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "matched": 1,
+          "correct_dates": 1,
+          "correct_links": 1,
+          "critical_false_tasks": 0,
+          "unsupported_actions": 0,
+          "action_count": 1,
+          "correct_completions": 0,
+          "unexpected_completions": 0,
+          "expected_completions": 0
+        },
+        "final": {
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "matched": 1,
+          "correct_dates": 1,
+          "correct_links": 1,
+          "critical_false_tasks": 0,
+          "unsupported_actions": 0,
+          "action_count": 1,
+          "correct_completions": 0,
+          "unexpected_completions": 0,
+          "expected_completions": 0
+        }
+      }
+    },
+    {
+      "id": "d01",
+      "kind": "day",
+      "tags": [
+        "多条合并",
+        "来源覆盖"
+      ],
+      "error": null,
+      "score": {
+        "schema_valid": 1,
+        "validation_error": null,
+        "raw_quotes": {
+          "quote_count": 2,
+          "valid_quotes": 2
+        },
+        "final_quotes": {
+          "quote_count": 2,
+          "valid_quotes": 2
+        },
+        "day": {
+          "required_sources": 2,
+          "covered_sources": 2
+        }
+      }
+    },
+    {
+      "id": "d02",
+      "kind": "day",
+      "tags": [
+        "状态变化"
+      ],
+      "error": null,
+      "score": {
+        "schema_valid": 1,
+        "validation_error": null,
+        "raw_quotes": {
+          "quote_count": 2,
+          "valid_quotes": 2
+        },
+        "final_quotes": {
+          "quote_count": 2,
+          "valid_quotes": 2
+        },
+        "day": {
+          "required_sources": 2,
+          "covered_sources": 2
+        }
+      }
+    },
+    {
+      "id": "d03",
+      "kind": "day",
+      "tags": [
+        "建议边界"
+      ],
+      "error": null,
+      "score": {
+        "schema_valid": 1,
+        "validation_error": null,
+        "raw_quotes": {
+          "quote_count": 1,
+          "valid_quotes": 1
+        },
+        "final_quotes": {
+          "quote_count": 1,
+          "valid_quotes": 1
+        },
+        "day": {
+          "required_sources": 1,
+          "covered_sources": 1
+        }
+      }
+    },
+    {
+      "id": "d04",
+      "kind": "day",
+      "tags": [
+        "提示注入",
+        "事实支持"
+      ],
+      "error": null,
+      "score": {
+        "schema_valid": 1,
+        "validation_error": null,
+        "raw_quotes": {
+          "quote_count": 1,
+          "valid_quotes": 1
+        },
+        "final_quotes": {
+          "quote_count": 1,
+          "valid_quotes": 1
+        },
+        "day": {
+          "required_sources": 1,
+          "covered_sources": 1
+        }
+      }
+    }
+  ]
+}

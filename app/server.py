@@ -18,12 +18,12 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from app import __version__ as VERSION
 from app.ai import AIError, KeyStore, ModelClient, Worker, validate_config
 from app.store import Store, compact, day_valid, tzinfo
 
 ROOT = Path(__file__).resolve().parent.parent
 WEB = ROOT / "web"
-VERSION = "1.0.0"
 
 
 class Application:
