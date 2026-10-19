@@ -99,7 +99,10 @@ def validate_month(data, context):
 
 
 def execute_about(worker, job, settings):
+    from app.organization import automatic, portrait_readiness
     store, kind, target = worker.store, job["kind"], job["target"]
+    if kind == "portrait" and automatic(settings) and not portrait_readiness(store.memories())["ready"]:
+        return
     context_fn = (lambda db=None: store.month_context(target, db)) if kind == "month" else store.portrait_context if kind == "portrait" else store.memory_context
     context, before = context_fn()
     with store.connection() as db:

@@ -172,7 +172,10 @@ class GrowthMixin:
                 raise ValueError("备份成长缓存缺少原文依据") from exc
 
     def schedule_portrait(self, db, immediate=False):
+        from app.organization import automatic, portrait_readiness
         if not self.settings(db)["growth_enabled"] or self.settings(db)["growth_paused"]:
+            return
+        if automatic(self.settings(db)) and not portrait_readiness(self.memories(db))["ready"]:
             return
         context, current = self.portrait_context(db)
         if not context["memories"]:

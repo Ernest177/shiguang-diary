@@ -2545,3 +2545,9 @@ button {
 .growth-event p { font-size:14px; margin:7px 0; }
 .timeline-pagination { display:flex; align-items:center; justify-content:center; gap:28px; margin:32px 0; }
 @media(max-width:760px) { .growth-strip { align-items:flex-start; flex-direction:column; gap:12px; } .timeline-search { flex-wrap:wrap; } .timeline-search input { flex-basis:100%; } .growth-moment { grid-template-columns:1fr; gap:10px; } .about-tabs { overflow-x:auto; } }
+.original-prose { white-space:pre-wrap; overflow-wrap:anywhere; line-height:2; font-weight:400; }
+.original-review > .eyebrow { margin-bottom:20px; }
+.original-review blockquote { margin:0 0 16px; border:0; padding:0; color:var(--ink); }
+.original-portrait { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:24px; }
+.original-portrait article { padding:28px; border:1px solid var(--line); border-radius:10px; background:var(--surface); }
+.original-portrait blockquote { margin:16px 0; padding:0; border:0; }

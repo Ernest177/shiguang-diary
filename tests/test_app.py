@@ -33,7 +33,8 @@ class StoreTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.store = Store(self.temporary.name)
-        self.store.save_settings({'ai_mode':'local','ai_base_url':'http://127.0.0.1:11434/v1','ai_model':'test'})
+        # These legacy contracts exercise the model pipeline; adaptive routing has its own suite.
+        self.store.save_settings({'ai_mode':'local','ai_base_url':'http://127.0.0.1:11434/v1','ai_model':'test','organization_mode':'always'})
 
     def tearDown(self):
         self.temporary.cleanup()

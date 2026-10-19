@@ -317,14 +317,19 @@ class AboutMixin:
                 self.enqueue(db, kind, target)
 
     def about_state(self, month):
+        from app.organization import automatic, portrait_readiness, portrait_presentation, original_memory_preview
         with self.connection() as db:
             context, _ = self.memory_context(db)
+            memories = self.memories(db)
+            settings = self.settings(db)
             reports = {}
             for kind, target in (("portrait", "current"), ("month", month_valid(month))):
                 report = db.execute("SELECT * FROM personal_reports WHERE kind=? AND target=?", (kind, target)).fetchone()
                 _, current = self.portrait_context(db) if kind == "portrait" else self.month_context(target, db)
                 if report and report["signature"] == current:
                     reports[kind] = {**dict(report), "data": json.loads(report["data"])}
+                    if kind == "portrait":
+                        reports[kind]["data"] = portrait_presentation(reports[kind]["data"], memories, settings)
             entries = [dict(r) for r in db.execute("""SELECT e.id,e.journal_day,e.body,e.ai_enabled,
               EXISTS(SELECT 1 FROM memory_permissions p WHERE p.entry_id=e.id) AS memory_enabled
               FROM entries e ORDER BY e.journal_day DESC,e.created_at DESC LIMIT 200""")]
@@ -335,8 +340,10 @@ class AboutMixin:
                 effective = {r["id"].split(":", 1)[1] for r in context["records"] if r["type"] == "entry"}
                 for entry in entries:
                     entry["memory_enabled"] = int(entry["id"] in effective)
-            return {"growth": self.growth_status(db), "experiences": [dict(r) for r in db.execute("SELECT * FROM experiences ORDER BY created_at DESC,id")],
-                    "memories": self.memories(db), "entries": entries, "reports": reports, "jobs": jobs,
+            return {"organization": {"mode": settings["organization_mode"], **portrait_readiness(memories)},
+                    "original_preview": original_memory_preview(memories, settings["original_similarity"]) if automatic(settings) else [],
+                    "growth": self.growth_status(db), "experiences": [dict(r) for r in db.execute("SELECT * FROM experiences ORDER BY created_at DESC,id")],
+                    "memories": memories, "entries": entries, "reports": reports, "jobs": jobs,
                     "source_count": len(context["records"]), "entry_source_count": sum(r["type"] == "entry" for r in context["records"])}
 
     @staticmethod

@@ -44,7 +44,7 @@ class AboutTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.store = Store(self.tmp.name)
-        self.store.save_settings({"ai_mode":"local","ai_base_url":"http://127.0.0.1:1/v1","ai_model":"synthetic"})
+        self.store.save_settings({"ai_mode":"local","ai_base_url":"http://127.0.0.1:1/v1","ai_model":"synthetic","organization_mode":"always"})
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -82,7 +82,7 @@ class AboutTests(unittest.TestCase):
         item=state["reports"]["portrait"]["data"]["items"][0]
         self.assertEqual(item["certainty"],"hypothesis")
         self.assertEqual(item["period"],"2026-10")
-        self.assertEqual(state["reports"]["portrait"]["prompt_version"],"portrait.v1")
+        self.assertEqual(state["reports"]["portrait"]["prompt_version"],"portrait.v2")
 
     def test_user_correction_survives_regeneration_and_reaches_portrait(self):
         self.experience()

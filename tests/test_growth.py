@@ -60,7 +60,7 @@ class GrowthTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.store = Store(self.tmp.name)
-        self.store.save_settings({"ai_mode": "local", "ai_base_url": "http://127.0.0.1:1/v1", "ai_model": "synthetic"})
+        self.store.save_settings({"ai_mode": "local", "ai_base_url": "http://127.0.0.1:1/v1", "ai_model": "synthetic", "organization_mode": "always"})
         self.store.set_growth_policy({"growth_enabled": True})
 
     def tearDown(self):

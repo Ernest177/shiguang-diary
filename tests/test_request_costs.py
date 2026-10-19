@@ -27,7 +27,7 @@ class RequestCostTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.store = Store(self.temp.name)
-        self.store.save_settings({"ai_mode": "local", "ai_base_url": "http://127.0.0.1:1/v1", "ai_model": "synthetic"})
+        self.store.save_settings({"ai_mode": "local", "ai_base_url": "http://127.0.0.1:1/v1", "ai_model": "synthetic", "organization_mode": "always"})
         self.model = CountingModel()
         self.worker = Worker(self.store, self.model)
 

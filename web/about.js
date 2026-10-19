@@ -136,6 +136,10 @@ function renderAbout() {
 
 function portraitHTML() {
   const report = state.about.reports.portrait;
+  if (state.about.organization?.mode === "auto" && (!state.about.organization.ready || !report?.data.items.length)) {
+    const preview = state.about.original_preview || [];
+    return `<div class="about-section-heading"><div><h2>先留住你的原话</h2><p>${state.about.organization.ready ? "暂时没有需要额外概括的理解，先回看这些已记录的线索。" : "资料还少，先积累，不急着为你下结论。"}</p></div></div>${preview.length ? `<div class="original-portrait">${preview.map((item) => `<article><span class="memory-period">${escapeHTML(item.label)} · ${escapeHTML(item.source.period || "时间未注明")}</span><blockquote class="original-prose">${escapeHTML(item.text)}</blockquote>${aboutSource(item.source)}</article>`).join("")}</div>` : empty("生活会慢慢连成故事", "继续写日记即可；行动与成长线索照常提取。", "leaf")}<p class="report-meta">来自至少3份记录、跨越2个日期或阶段的线索后，再尝试总结变化。这是开始整理的条件，不代表已经完整了解你。</p>`;
+  }
   if (!report || !report.data.items.length)
     return `<div class="about-intro"><div class="about-intro-mark">${icon("leaf")}</div><h2>你有自己的来路，<br>也有尚未写完的故事。</h2><p>${state.about.growth?.enabled ? "继续写日记，生活的细节会慢慢积累。<br>有依据的理解会在这里出现，你随时可以修正。" : "开启自动积累，日记会自然连成你的成长记录。<br>也可以先补录一段对你重要的经历。"}</p><div class="about-steps"><div><span>01</span><strong>留下经历</strong><small>一个转折、一段坚持，或一次新的选择。</small></div><div><span>02</span><strong>自动积累</strong><small>新内容顺手整理，旧记录分批接续。</small></div><div><span>03</span><strong>回看与修正</strong><small>不急着定义自己，允许理解不断变化。</small></div></div>${state.about.memories.length ? '<button class="secondary-button" data-about-generate="portrait">根据当前记忆生成画像 ↗</button>' : ""}</div>`;
   return `<div class="about-section-heading"><div><h2>从记录中，读到的你</h2><p>原文线索与模型的解释分开呈现；这些理解不定义你。</p></div><button class="text-button" data-about-generate="portrait">仅更新画像 ↗</button></div><div class="portrait-grid">${Object.entries(

@@ -43,10 +43,15 @@ class Application:
 
     def settings_input(self, data):
         values = self.store.settings()
-        for k in ("timezone", "ai_mode", "ai_base_url", "ai_model", "cloud_consent", "backup_keep", "backup_dir"):
+        for k in ("timezone", "ai_mode", "ai_base_url", "ai_model", "cloud_consent", "backup_keep", "backup_dir", "organization_mode", "original_similarity", "brief_entry_chars"):
             if k in data:
                 values[k] = data[k]
         tzinfo(values["timezone"])
+        if values["organization_mode"] not in ("auto", "always"):
+            raise ValueError("请选择自动按需整理或始终使用 AI")
+        for key, lower, upper in (("original_similarity", 60, 99), ("brief_entry_chars", 100, 2000)):
+            if isinstance(values[key], bool) or not isinstance(values[key], int) or not lower <= values[key] <= upper:
+                raise ValueError("相似度需为 60–99，简短记录上限需为 100–2000 字")
         if not isinstance(values["backup_keep"], int) or not 2 <= values["backup_keep"] <= 100:
             raise ValueError("备份保留数量需为 2–100")
         if not isinstance(values["backup_dir"], str) or len(values["backup_dir"]) > 1000:

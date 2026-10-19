@@ -20,6 +20,7 @@ from app.prompts import ENTRY_PROMPT, DAY_PROMPT
 from app.action_dates import duration_deadline
 from app.usage import call_scope, usage_counts
 from app.request_context import prepare_request, receipt_key, cached_result, with_receipt
+from app.organization import ORGANIZATION_VERSION, automatic, brief_original, original_day_data, portrait_readiness
 
 REQUEST_OPTIONS = {"temperature": 0.2, "stream": False}
 
@@ -311,6 +312,9 @@ class Worker:
                 return False
             job = dict(job)
             settings = store.settings(db)
+            if job["kind"] == "portrait" and automatic(settings) and not portrait_readiness(store.memories(db))["ready"]:
+                db.execute("UPDATE jobs SET status='done',error=NULL WHERE id=?", (job["id"],))
+                return True
             if settings["growth_enabled"] and job["kind"] in ("growth", "portrait", "month"):
                 reason = "自动积累已暂停" if settings["growth_paused"] else ""
                 ledger = getattr(self.client, "ledger", None)
@@ -462,6 +466,9 @@ class Worker:
             return
         # Per-entry analysis is derived from the same originals and is not sent twice.
         key_context = {**context, "records": [{k: v for k, v in r.items() if k != "analysis"} for r in context["records"]]}
+        forced = job["revision"] == -1
+        key_context["organization"] = {"version": ORGANIZATION_VERSION, "mode": settings["organization_mode"],
+                                       "brief_entry_chars": settings["brief_entry_chars"], "forced": forced}
         key = receipt_key("day", key_context, settings)
         with store.connection() as db:
             cached = db.execute("SELECT data FROM daily_summaries WHERE day=?", (job["target"],)).fetchone()
@@ -474,11 +481,20 @@ class Worker:
                     if db.execute("SELECT 1 FROM jobs WHERE id=?", (job["id"],)).fetchone():
                         db.execute("UPDATE daily_summaries SET signature=? WHERE day=?", (signature, job["target"]))
                     return
+        if not forced and brief_original(context, settings):
+            with store.connection() as db:
+                _, latest = store.day_context(job["target"])
+                if latest == signature and db.execute("SELECT 1 FROM jobs WHERE id=?", (job["id"],)).fetchone():
+                    db.execute("INSERT OR REPLACE INTO daily_summaries VALUES(?,?,?,?,?)", (job["target"], signature,
+                               compact(with_receipt(original_day_data(), key)), "本机原文", now()))
+            return
         payload, decode = prepare_request("day", context)
         # Bound transmission instead of silently dropping records from a purported full recap.
         if len(compact(payload)) > 120000:
             raise AIError("当天内容较多，超出本版单次整理范围；所有原文仍可查看")
         result = validate_day(decode(self.client.call(settings, DAY_PROMPT, payload)), context)
+        if forced:
+            result["_organization"] = {"version": ORGANIZATION_VERSION, "kind": "ai", "forced": True}
         with store.connection() as db:
             _, latest = store.day_context(job["target"])
             if latest != signature or not db.execute("SELECT 1 FROM jobs WHERE id=?", (job["id"],)).fetchone():

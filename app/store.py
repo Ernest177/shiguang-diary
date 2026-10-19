@@ -13,6 +13,7 @@ from pathlib import Path
 
 from app.about import ABOUT_SCHEMA, ABOUT_TABLES, AboutMixin
 from app.growth import GROWTH_SCHEMA, GROWTH_TABLES, GROWTH_DEFAULTS, GrowthMixin
+from app.organization import ORGANIZATION_DEFAULTS, near_original, day_presentation, automatic
 
 
 def now():
@@ -80,7 +81,7 @@ CREATE TABLE IF NOT EXISTS jobs(
 
 DEFAULTS = {"timezone": "Asia/Shanghai", "ai_mode": "off", "ai_base_url": "",
             "ai_model": "", "cloud_consent": False, "backup_keep": 30,
-            "backup_dir": "", "last_backup_at": "", "backup_error": "", **GROWTH_DEFAULTS}
+            "backup_dir": "", "last_backup_at": "", "backup_error": "", **GROWTH_DEFAULTS, **ORGANIZATION_DEFAULTS}
 
 
 class Store(GrowthMixin, AboutMixin):
@@ -130,10 +131,13 @@ class Store(GrowthMixin, AboutMixin):
     def save_settings(self, values):
         allowed = set(DEFAULTS) - {"last_backup_at", "backup_error"} - set(GROWTH_DEFAULTS)
         with self.connection() as db:
+            previous = self.settings(db)
+            changed = {k for k, v in values.items() if k in allowed and previous.get(k) != v}
             for k, v in values.items():
                 if k in allowed:
                     db.execute("INSERT OR REPLACE INTO settings VALUES(?,?)", (k, compact(v)))
-            db.execute("UPDATE jobs SET status='queued',attempts=0,retry_at=NULL,error=NULL WHERE status='waiting' OR (status='failed' AND kind IN ('entry','day'))")
+            if not changed or not changed <= set(ORGANIZATION_DEFAULTS):
+                db.execute("UPDATE jobs SET status='queued',attempts=0,retry_at=NULL,error=NULL WHERE status='waiting' OR (status='failed' AND kind IN ('entry','day'))")
 
     @staticmethod
     def enqueue(db, kind, target, revision=0):
@@ -230,6 +234,8 @@ class Store(GrowthMixin, AboutMixin):
             for r in db.execute(sql, args):
                 item = dict(r)
                 item["analysis"] = json.loads(item["analysis"]) if item["analysis"] else None
+                item["summary_redundant"] = bool(item["analysis"] and automatic(self.settings(db)) and near_original(
+                    item["analysis"]["summary"], item["body"], self.settings(db)["original_similarity"]))
                 if self.settings(db)["growth_enabled"]:
                     item["memory_enabled"] = int(bool(item["ai_enabled"]) and not db.execute("SELECT 1 FROM memory_exclusions WHERE entry_id=?", (item["id"],)).fetchone())
                 result.append(item)
@@ -303,13 +309,13 @@ class Store(GrowthMixin, AboutMixin):
         return context, signature
 
     def summary(self, day):
-        _, signature = self.day_context(day)
+        context, signature = self.day_context(day)
         with self.connection() as db:
             row = db.execute("SELECT * FROM daily_summaries WHERE day=?", (day,)).fetchone()
             job = db.execute("SELECT status,error FROM jobs WHERE kind='day' AND target=?", (day,)).fetchone()
             result = dict(row) if row else {"day": day, "data": None}
             if row:
-                result["data"] = json.loads(row["data"])
+                result["data"] = day_presentation(json.loads(row["data"]), context, self.settings(db))
             result["stale"] = bool(row and row["signature"] != signature)
             result["status"] = job["status"] if job else "empty"
             result["error"] = job["error"] if job else None
@@ -331,7 +337,7 @@ class Store(GrowthMixin, AboutMixin):
                 self.enqueue(db, "entry", entry_id, row["revision"])
                 self.enqueue(db, "day", row["journal_day"])
             if day:
-                self.enqueue(db, "day", day_valid(day))
+                self.enqueue(db, "day", day_valid(day), -1 if force else 0)
                 db.execute("UPDATE jobs SET retry_at=? WHERE kind='day' AND target=?", (now(), day))
                 if force:
                     cached = db.execute("SELECT data FROM daily_summaries WHERE day=?", (day,)).fetchone()

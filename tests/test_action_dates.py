@@ -73,7 +73,7 @@ class ActionDateLifecycleTests(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.store = Store(self.directory.name)
-        self.store.save_settings({"ai_mode": "local", "ai_base_url": "http://127.0.0.1:11434/v1", "ai_model": "synthetic"})
+        self.store.save_settings({"ai_mode": "local", "ai_base_url": "http://127.0.0.1:11434/v1", "ai_model": "synthetic", "organization_mode": "always"})
         self.entry = self.store.save_entry({"body": "花两天时间整理项目思路", "journal_day": "2026-10-20"})
         with self.store.connection() as db:
             db.execute("UPDATE entries SET created_at=? WHERE id=?", ("2026-10-19T16:30:00+00:00", self.entry["id"]))
