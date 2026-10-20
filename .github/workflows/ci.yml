@@ -16,6 +16,8 @@ jobs:
   test:
     name: ${{ matrix.os }} / Python ${{ matrix.python }}
     runs-on: ${{ matrix.os }}
+    env:
+      PYTHONIOENCODING: utf-8
     # 为运行环境的准备和收尾留出余量；检查步骤仍有各自的超时限制。
     timeout-minutes: 20
     strategy:
@@ -46,7 +48,9 @@ jobs:
           node --check web/about.js
           node --check web/usage.js
       - name: Run system scenario checks
-        timeout-minutes: 3
+        # Includes real SQLite commits/snapshots and native Windows launchers.
+        # Hosted disk speed varies; keep every scenario and a bounded step.
+        timeout-minutes: 6
         run: python -m unittest discover -s tests -v
       - name: Check personal archive rendering contracts
         timeout-minutes: 1

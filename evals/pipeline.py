@@ -10,6 +10,7 @@ import json
 import inspect
 import os
 from pathlib import Path
+import sys
 import tempfile
 import time
 import uuid
@@ -318,6 +319,11 @@ def summary(report):
 
 
 def main():
+    # Redirected Windows terminals can default to cp1252 even when the report is
+    # Chinese. Use a stable UTF-8 contract for both console output and error text.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="backslashreplace")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mode", choices=("contract", "live"), default="contract")
     parser.add_argument("--model")

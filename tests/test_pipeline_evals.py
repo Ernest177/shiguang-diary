@@ -2,6 +2,11 @@
 import copy
 import io
 import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -109,6 +114,17 @@ class PipelineEvaluationTests(unittest.TestCase):
         self.assertEqual(report["cost_reduction_percent"], 50.0)
         self.assertEqual(report["samples"][0]["calls"][0]["accounting"]["cached_tokens"], 40)
         self.assertEqual(opener.open.call_count, 3)
+
+    def test_cli_redirected_cp1252_outputs_chinese_utf8_without_network(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result = subprocess.run([sys.executable, "-m", "evals.pipeline", "--case", "brief", "--max-calls", "6",
+                                     "--output-dir", directory], cwd=Path(__file__).resolve().parents[1],
+                                    env={**os.environ, "PYTHONIOENCODING": "cp1252"}, capture_output=True, timeout=45)
+            self.assertEqual(result.returncode, 0, result.stderr.decode("utf-8", errors="replace"))
+            self.assertIn("拾光完整流程对比", result.stdout.decode("utf-8"))
+            report = json.loads(next(Path(directory).glob("*.json")).read_text(encoding="utf-8"))
+            self.assertEqual(report["mode"], "contract")
+            self.assertTrue(report["passed"])
 
 
 if __name__ == "__main__":
