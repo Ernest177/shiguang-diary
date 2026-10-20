@@ -45,7 +45,7 @@ class OtherProject(BaseHTTPRequestHandler):
 class StartupTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="diary startup ")
-        self.root = Path(self.temp.name)
+        self.root = Path(self.temp.name).resolve()
         self.other = HTTPServer(("127.0.0.1", 0), OtherProject)
         self.thread = threading.Thread(target=self.other.serve_forever, daemon=True)
         self.thread.start()
@@ -156,7 +156,11 @@ class StartupTests(unittest.TestCase):
             if url:
                 boot = request(url, "/api/bootstrap")
                 self.assertEqual(Path(boot["settings"]["data_dir"]), data)
+                launched_pid = json.loads((data / "runtime.json").read_text(encoding="utf-8"))["pid"]
                 request(url, "/api/shutdown", {}, boot["token"])
+                subprocess.run(["powershell.exe", "-NoProfile", "-Command",
+                                "Wait-Process -Id " + str(launched_pid) + " -Timeout 10 -ErrorAction SilentlyContinue"],
+                               capture_output=True, timeout=15, creationflags=subprocess.CREATE_NO_WINDOW)
                 for _ in range(50):
                     try:
                         request(url, "/api/health")
@@ -173,7 +177,11 @@ class StartupTests(unittest.TestCase):
         data = checkout / "data"
         data.mkdir()
         (data / "runtime.json").write_text(json.dumps({"app": "shiguang-diary", "port": self.port, "pid": 1}), encoding="utf-8")
-        command = ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(checkout / "launch.ps1"),
+        import ctypes
+        short_name = ctypes.create_unicode_buffer(32768)
+        short_size = ctypes.windll.kernel32.GetShortPathNameW(str(checkout), short_name, len(short_name))
+        launcher = Path(short_name.value) / "launch.ps1" if 0 < short_size < len(short_name) else checkout / "launch.ps1"
+        command = ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(launcher),
                    "-NoBrowser", "-PreferredPort", str(self.port)]
         processes = [subprocess.Popen(command, cwd=checkout, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                       creationflags=subprocess.CREATE_NO_WINDOW) for _ in range(2)]
@@ -209,7 +217,11 @@ class StartupTests(unittest.TestCase):
             if url:
                 boot = request(url, "/api/bootstrap")
                 self.assertEqual(Path(boot["settings"]["data_dir"]), data)
+                launched_pid = json.loads((data / "runtime.json").read_text(encoding="utf-8"))["pid"]
                 request(url, "/api/shutdown", {}, boot["token"])
+                subprocess.run(["powershell.exe", "-NoProfile", "-Command",
+                                "Wait-Process -Id " + str(launched_pid) + " -Timeout 10 -ErrorAction SilentlyContinue"],
+                               capture_output=True, timeout=15, creationflags=subprocess.CREATE_NO_WINDOW)
                 for _ in range(50):
                     try:
                         request(url, "/api/health")

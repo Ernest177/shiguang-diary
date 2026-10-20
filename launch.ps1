@@ -25,8 +25,15 @@ function Get-DiaryRuntime([string]$Path) {
 }
 
 try {
-    $taskRoot = $PSScriptRoot
-    $dataDirectory = [IO.Path]::GetFullPath((Join-Path $taskRoot 'data')).TrimEnd('\')
+    $runtime = Get-Command python.exe -ErrorAction SilentlyContinue
+    if (-not $runtime) { throw 'Python 3.10 or newer is required. Please install Python and try again.' }
+    # Match the server's canonical paths, including Windows short names/junctions.
+    # JSON keeps non-ASCII paths independent of the console's character encoding.
+    $resolvedJson = & $runtime.Source -c 'import json,sys;from pathlib import Path;print(json.dumps([str(Path(p).resolve()) for p in sys.argv[1:]]))' $PSScriptRoot (Join-Path $PSScriptRoot 'data')
+    if ($LASTEXITCODE -ne 0) { throw 'Shiguang could not resolve its data folder.' }
+    $resolved = $resolvedJson | ConvertFrom-Json
+    $taskRoot = $resolved[0]
+    $dataDirectory = $resolved[1].TrimEnd('\')
     $runtimeFile = Join-Path $dataDirectory 'runtime.json'
     # Serialize double-clicks for this data folder; unrelated projects keep running.
     $hasher = [Security.Cryptography.SHA256]::Create()
@@ -44,12 +51,11 @@ try {
     if (-not $appUrl) {
         $startPort = $PreferredPort
         if ($previous) { $startPort = [int]$previous.port }
-        $runtime = Get-Command pythonw.exe -ErrorAction SilentlyContinue
-        if (-not $runtime) { $runtime = Get-Command python.exe -ErrorAction SilentlyContinue }
-        if (-not $runtime) { throw 'Python 3.10 or newer is required. Please install Python and try again.' }
+        $serviceRuntime = Join-Path (Split-Path $runtime.Source) 'pythonw.exe'
+        if (-not (Test-Path -LiteralPath $serviceRuntime)) { $serviceRuntime = $runtime.Source }
         $serverScript = Join-Path $taskRoot 'app\server.py'
         $arguments = @(('"{0}"' -f $serverScript), '--port', "$startPort", '--fallback-port', '--data-dir', ('"{0}"' -f $dataDirectory))
-        $serviceProcess = Start-Process -FilePath $runtime.Source -ArgumentList $arguments -WorkingDirectory $taskRoot -WindowStyle Hidden -PassThru
+        $serviceProcess = Start-Process -FilePath $serviceRuntime -ArgumentList $arguments -WorkingDirectory $taskRoot -WindowStyle Hidden -PassThru
         for ($attempt = 0; $attempt -lt 50; $attempt++) {
             $current = Get-DiaryRuntime $runtimeFile
             if ($current -and $current.pid -eq $serviceProcess.Id) {
