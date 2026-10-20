@@ -50,5 +50,10 @@ vm.runInContext(fs.readFileSync(require("node:path").join(__dirname,"../web/abou
   state.about.growth.enabled = false;
   vm.runInContext("renderAbout()",sandbox);
   assert.match(root.innerHTML,/开启自动积累/);
+  const scopeHTML = vm.runInContext('portraitScopeHTML({selection_version:"memory-selection.v1", included:24, available:40, source_count:18, decisions:3, long_term:5, period_start:"2018", period_end:"<img onerror=alert(1)>"})', sandbox);
+  assert.match(scopeHTML,/这次画像参考了哪些线索/);
+  assert.match(scopeHTML,/24 \/ 40/);
+  assert.match(scopeHTML,/未选入的记忆仍完整保留/);
+  assert.doesNotMatch(scopeHTML,/<img/);
   console.log("Growth progress, controls, local timeline, escaping and automatic update contracts passed.");
 })().catch(error=>{console.error(error);process.exitCode=1;});

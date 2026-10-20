@@ -134,6 +134,12 @@ function renderAbout() {
     };
 }
 
+function portraitScopeHTML(scope) {
+  if (!scope?.selection_version) return "";
+  const period = scope.period_start && scope.period_end ? `${scope.period_start} 至 ${scope.period_end}` : "部分线索没有明确日期";
+  return `<details class="source-details portrait-scope"><summary>这次画像参考了哪些线索</summary><p>使用 ${escapeHTML(scope.included)} / ${escapeHTML(scope.available)} 条线索，来自 ${escapeHTML(scope.source_count)} 份记录。包含 ${escapeHTML(scope.decisions)} 条你的确认与修正、${escapeHTML(scope.long_term)} 条长期线索。</p><p>已知时间范围：${escapeHTML(period)}。兼顾近期与早期经历；未选入的记忆仍完整保留，可在记忆卡片与成长足迹中查看。</p></details>`;
+}
+
 function portraitHTML() {
   const report = state.about.reports.portrait;
   if (state.about.organization?.mode === "auto" && (!state.about.organization.ready || !report?.data.items.length)) {
@@ -153,7 +159,7 @@ function portraitHTML() {
     })
     .join(
       "",
-    )}</div><p class="report-meta">${escapeHTML(timeAt(report.updated_at, true))} 更新 · ${escapeHTML(report.model)} · 每项理解均可通过记忆卡片修正${report.data.scope ? ` · 本次使用 ${report.data.scope.included} / ${report.data.scope.available} 条线索节选` : ""}</p>`;
+    )}</div><p class="report-meta">${escapeHTML(timeAt(report.updated_at, true))} 更新 · ${escapeHTML(report.model)} · 每项理解均可通过记忆卡片修正${report.data.scope ? ` · 本次使用 ${report.data.scope.included} / ${report.data.scope.available} 条线索节选` : ""}</p>${portraitScopeHTML(report.data.scope)}`;
 }
 
 function memoriesHTML() {

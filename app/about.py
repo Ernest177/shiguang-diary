@@ -230,26 +230,19 @@ class AboutMixin:
         if db is None:
             with self.connection() as db:
                 return self.portrait_context(db)
+        memories = self.memories(db)
+        if self.settings(db).get("growth_enabled"):
+            from app.memory_selection import select_memories
+            selected, scope = select_memories(memories)
+            context = {"memories": selected, "scope": scope}
+            # Coverage counters can change without changing the selected evidence.
+            # Do not pay for another portrait just to update these local counters.
+            return context, signature({"memories": selected, "selection_version": scope["selection_version"]})
         # Original details of corrected memories are deliberately not sent again.
         context = {"memories": [{"id": m["id"], "title": m["title"] if m["status"] != "corrected" else "用户已修正的记忆",
                                  "detail": m["correction"] if m["status"] == "corrected" else m["detail"],
                                  "category": m["category"], "horizon": m["horizon"], "period": m["period"],
-                                 "status": m["status"], "sources": m["sources"]} for m in self.memories(db)]}
-        if self.settings(db).get("growth_enabled"):
-            # Fixed-size, deterministic mixture: corrections, recent changes and older context.
-            values = context["memories"]
-            chosen = [m for m in values if m["status"] != "pending"][:8]
-            candidates = values[:12] + values[-8:] + values[::max(1, len(values) // 8)]
-            for memory in candidates:
-                if memory not in chosen and len(chosen) < 24:
-                    chosen.append(memory)
-            bounded = []
-            for memory in chosen:
-                item = {k: v for k, v in memory.items() if k != "sources"}
-                if len(encode(bounded + [item])) <= 24000:
-                    bounded.append(item)
-            context["memories"] = bounded
-            context["scope"] = {"included": len(bounded), "available": len(values), "note": "当前线索节选，不代表全部经历；不要声称完整了解用户"}
+                                 "status": m["status"], "sources": m["sources"]} for m in memories]}
         return context, signature(context)
 
     def month_context(self, month, db=None):
@@ -325,10 +318,12 @@ class AboutMixin:
             reports = {}
             for kind, target in (("portrait", "current"), ("month", month_valid(month))):
                 report = db.execute("SELECT * FROM personal_reports WHERE kind=? AND target=?", (kind, target)).fetchone()
-                _, current = self.portrait_context(db) if kind == "portrait" else self.month_context(target, db)
+                selected, current = self.portrait_context(db) if kind == "portrait" else self.month_context(target, db)
                 if report and report["signature"] == current:
                     reports[kind] = {**dict(report), "data": json.loads(report["data"])}
                     if kind == "portrait":
+                        if selected.get("scope"):
+                            reports[kind]["data"]["scope"] = selected["scope"]
                         reports[kind]["data"] = portrait_presentation(reports[kind]["data"], memories, settings)
             entries = [dict(r) for r in db.execute("""SELECT e.id,e.journal_day,e.body,e.ai_enabled,
               EXISTS(SELECT 1 FROM memory_permissions p WHERE p.entry_id=e.id) AS memory_enabled

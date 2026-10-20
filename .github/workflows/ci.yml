@@ -72,6 +72,9 @@ jobs:
       - name: Check personal archive evidence and uncertainty contracts
         timeout-minutes: 2
         run: python -m evals.about_contract
+      - name: Compare complete synthetic organization workflows (no model calls)
+        timeout-minutes: 2
+        run: python -m evals.pipeline
       - name: Validate isolated synthetic demo
         timeout-minutes: 2
         run: python tools/create_demo.py

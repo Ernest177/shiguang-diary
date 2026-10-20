@@ -7,11 +7,13 @@
 - `scoring.py`：一对一锚点匹配、原始 / 最终结果分开计分、版本化门禁。
 - `run.py`：默认离线；真实评测显式开启，只发送合成输入，从指定环境变量读取密钥。
 - `compare.py`：同数据集、评分器、门禁、样例集合和模式才可比较；逐例检查退步。
+- `pipeline.py` 与 `corpus/pipeline-cases.json`：在隔离数据库中回放 7 组完整操作，对比始终 AI 与按需整理的全部请求；区分首次历史补处理、日常新增与重复检查，支持显式真实用量与费用、请求上限和历史报告比较。默认手写替身不能证明真实收益。
 - `corpus/about-cases.json` 与 `about_contract.py`：11 个个人档案的手写合约样例，检查引用、近期范围、推测标记与月度双向来源。不是模型质量分数。
 
 ```bash
 python -m evals.run --baseline evals/baselines/contract-v1.json
 python -m evals.about_contract
+python -m evals.pipeline
 ```
 
 报告默认保存在被 Git 忽略的 `.eval-results/`。更换提示词、数据或评分规则时保留版本边界；不要刷新基线隐藏退步。真实实验命令、指标定义、计费与人工复核要求见[迭代说明](../docs/iteration.md)。
