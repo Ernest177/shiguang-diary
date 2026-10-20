@@ -20,13 +20,15 @@ class ShortcutTests(unittest.TestCase):
         self.desktop.mkdir()
         self.shortcut = self.desktop / "拾光日记.lnk"
         shutil.copyfile(ROOT / "tools" / "install_shortcut.ps1", self.root / "tools" / "install_shortcut.ps1")
+        shutil.copyfile(ROOT / "tools" / "shortcut.ps1", self.root / "tools" / "shortcut.ps1")
         (self.root / "launch.ps1").write_text("# isolated launcher fixture", encoding="ascii")
         self.helper = self.root / "fixture.ps1"
         self.helper.write_text('''param([string]$Mode,[string]$Shortcut,[string]$Target)
+$ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = New-Object Text.UTF8Encoding($false)
-$shell = New-Object -ComObject WScript.Shell
-$link = $shell.CreateShortcut($Shortcut)
-if ($Mode -eq 'create') { $link.TargetPath = $Target; $link.Save() }
+. (Join-Path $PSScriptRoot 'tools\\shortcut.ps1')
+$link = [Shiguang.DesktopShortcut]::Load($Shortcut)
+if ($Mode -eq 'create') { $link.TargetPath = $Target; $link.Save($Shortcut) }
 @{ target = $link.TargetPath; arguments = $link.Arguments; directory = $link.WorkingDirectory } | ConvertTo-Json -Compress
 ''', encoding="ascii")
 
@@ -82,6 +84,7 @@ if ($Mode -eq 'create') { $link.TargetPath = $Target; $link.Save() }
         (moved / "tools").mkdir(parents=True)
         (moved / "data").mkdir()
         for source, target in ((self.root / "tools" / "install_shortcut.ps1", moved / "tools" / "install_shortcut.ps1"),
+                               (self.root / "tools" / "shortcut.ps1", moved / "tools" / "shortcut.ps1"),
                                (self.root / "launch.ps1", moved / "launch.ps1"),
                                (self.root / "data" / "desktop-entry-id.json", moved / "data" / "desktop-entry-id.json")):
             shutil.copyfile(source, target)

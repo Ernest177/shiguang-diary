@@ -27,12 +27,12 @@ function Test-ManagedShortcut($Shortcut) {
 }
 
 try {
+    . (Join-Path $PSScriptRoot 'shortcut.ps1')
     if (-not (Test-Path -LiteralPath $launcher -PathType Leaf)) { throw 'The Shiguang launcher was not found beside this installer.' }
     if (-not (Test-Path -LiteralPath $desktopRoot -PathType Container)) { throw 'The desktop folder does not exist.' }
-    $shell = New-Object -ComObject WScript.Shell
     $existing = $null
     if (Test-Path -LiteralPath $shortcutPath) {
-        $existing = $shell.CreateShortcut($shortcutPath)
+        $existing = [Shiguang.DesktopShortcut]::Load($shortcutPath)
         if (-not (Test-ManagedShortcut $existing)) { throw 'A shortcut with this name belongs to another application. It was not replaced.' }
     }
 
@@ -40,7 +40,7 @@ try {
     foreach ($file in Get-ChildItem -LiteralPath $desktopRoot -Filter '*.lnk') {
         if ($file.FullName -eq $shortcutPath) { continue }
         if (-not $file.BaseName.StartsWith([IO.Path]::GetFileNameWithoutExtension($legacyName))) { continue }
-        try { $candidate = $shell.CreateShortcut($file.FullName) } catch { continue }
+        try { $candidate = [Shiguang.DesktopShortcut]::Load($file.FullName) } catch { continue }
         if ($candidate.TargetPath -eq $legacyLauncher) { $legacyPaths += $file.FullName }
     }
     $replaceCurrent = $existing -and ($existing.TargetPath -ne $powershellPath -or $existing.Arguments -ne $launchArguments -or $existing.WorkingDirectory -ne $taskRoot -or $existing.Description -ne $entryDescription)
@@ -56,15 +56,15 @@ try {
         @{ id = $entryId } | ConvertTo-Json -Compress | Set-Content -LiteralPath $identityPath -Encoding Ascii
     }
     if (-not $existing -or $replaceCurrent) {
-        $shortcut = $shell.CreateShortcut($shortcutPath)
+        $shortcut = [Shiguang.DesktopShortcut]::Load($shortcutPath)
         $shortcut.TargetPath = $powershellPath
         $shortcut.Arguments = $launchArguments
         $shortcut.WorkingDirectory = $taskRoot
         $shortcut.WindowStyle = 7
         $shortcut.Description = $entryDescription
-        $shortcut.Save()
+        $shortcut.Save($shortcutPath)
     }
-    $saved = $shell.CreateShortcut($shortcutPath)
+    $saved = [Shiguang.DesktopShortcut]::Load($shortcutPath)
     if ($saved.TargetPath -ne $powershellPath -or $saved.Arguments -ne $launchArguments) { throw 'The shortcut could not be verified.' }
     foreach ($legacyPath in $legacyPaths) {
         if ([IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($legacyPath)) -ne $desktopRoot) { throw 'Unexpected shortcut location.' }
