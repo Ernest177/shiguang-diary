@@ -132,10 +132,15 @@ vm.runInContext("renderAbout()", sandbox);
 assert.match(root.innerHTML, /disabled/);
 assert.match(root.innerHTML, /你的档案|你有自己的来路/);
 state.about.organization = { mode: "auto", ready: false, records: 1, periods: 1 };
-state.about.original_preview = [{ text: "<img>合成的原话", label: "原文", source: memory.sources[0] }];
+state.about.original_preview = [
+  { text: "<img>合成的原话", label: "原文", source: memory.sources[0] },
+  { text: "<img>合成的原话", label: "原文", source: { ...memory.sources[0], record_id: "entry:repeat-2", period: "2026-10-02" } },
+];
 vm.runInContext("renderAbout()", sandbox);
 assert.match(root.innerHTML, /先留住你的原话/);
 assert.match(root.innerHTML, /&lt;img&gt;合成的原话/);
+assert.equal(root.innerHTML.split("&lt;img&gt;合成的原话").length - 1, 2);
+assert.match(root.innerHTML, /data-about-source="entry:repeat-2" data-about-day="2026-10-02"/);
 assert.doesNotMatch(root.innerHTML, /从记录中，读到的你/);
 assert.doesNotMatch(root.innerHTML, /待你确认的理解/);
 console.log(

@@ -4,7 +4,7 @@ import tempfile
 import unittest
 
 from app.ai import Worker
-from app.organization import brief_original, day_presentation, near_original, portrait_readiness, portrait_presentation
+from app.organization import brief_original, day_presentation, near_original, portrait_readiness, portrait_presentation, original_memory_preview
 from app.server import Application
 from app.store import Store
 from tests.test_request_costs import CountingModel
@@ -153,6 +153,33 @@ class OrganizationTests(unittest.TestCase):
         self.store.update_memory(memory["id"], {"status": "corrected", "correction": "这是我补充的实际情况", "updated_at": memory["updated_at"]})
         preview = self.store.about_state("2026-10")["original_preview"][0]
         self.assertEqual((preview["label"], preview["text"]), ("你的修正", "这是我补充的实际情况"))
+
+    def test_repeated_originals_from_different_dates_remain_distinct_occurrences(self):
+        memories = self.memories()
+        memories[0]["sources"][0]["quote"] = "最近晚上总会担心第二天的工作。"
+        memories[2]["sources"][0]["quote"] = "最近晚上总会担心第二天的工作。"
+        # A single memory may cite the same concern on multiple dates.
+        memories[0]["sources"].append(memories[2]["sources"][0])
+        preview = original_memory_preview([memories[0]])
+        self.assertEqual(len(preview), 2)
+        self.assertEqual(preview[0]["text"], preview[1]["text"])
+        self.assertNotEqual(preview[0]["source"]["record_id"], preview[1]["source"]["record_id"])
+        self.assertNotEqual(preview[0]["source"]["period"], preview[1]["source"]["period"])
+
+    def test_original_preview_collapses_only_identical_citations_from_the_same_record(self):
+        memory = self.memories()[0]
+        duplicate = copy.deepcopy(memory)
+        similar = copy.deepcopy(memory)
+        similar["sources"][0]["quote"] = "原话片段里还有另一个细节"
+        preview = original_memory_preview([memory, duplicate, similar])
+        self.assertEqual([p["text"] for p in preview], [memory["sources"][0]["quote"], similar["sources"][0]["quote"]])
+
+    def test_portrait_is_not_hidden_for_matching_another_ai_generated_summary(self):
+        memories = self.memories()
+        generated = "这段时间你在尝试不同的表达方式，并逐渐发现提前准备能够减轻沟通时的压力。"
+        memories[0]["detail"] = generated
+        data = {"schema_version": 1, "items": [{"text": generated, "memory_ids": ["m0", "m2"], "category": "focus"}]}
+        self.assertEqual(portrait_presentation(data, memories, self.store.settings()), data)
 
     def test_policy_input_is_validated_independently_of_cloud_permission(self):
         app = Application(self.temp.name)

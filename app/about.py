@@ -341,7 +341,7 @@ class AboutMixin:
                 for entry in entries:
                     entry["memory_enabled"] = int(entry["id"] in effective)
             return {"organization": {"mode": settings["organization_mode"], **portrait_readiness(memories)},
-                    "original_preview": original_memory_preview(memories, settings["original_similarity"]) if automatic(settings) else [],
+                    "original_preview": original_memory_preview(memories) if automatic(settings) else [],
                     "growth": self.growth_status(db), "experiences": [dict(r) for r in db.execute("SELECT * FROM experiences ORDER BY created_at DESC,id")],
                     "memories": memories, "entries": entries, "reports": reports, "jobs": jobs,
                     "source_count": len(context["records"]), "entry_source_count": sum(r["type"] == "entry" for r in context["records"])}

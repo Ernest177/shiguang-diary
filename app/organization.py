@@ -95,7 +95,9 @@ def portrait_presentation(data, memories, settings):
     for item in data["items"]:
         related = [known[i] for i in item["memory_ids"] if i in known]
         records = {s["record_id"] for m in related for s in m["sources"]}
-        originals = [m["correction"] if m["status"] == "corrected" else m["detail"] for m in related]
+        # Compare the derived portrait only with the user's own source wording.
+        # Another AI-generated memory detail is not an original diary passage.
+        originals = [m["correction"] for m in related if m["status"] == "corrected"]
         originals += [s["quote"] for m in related if m["status"] != "corrected" for s in m["sources"]]
         if len(records) >= 2 and not any(near_original(item["text"], text, settings.get("original_similarity", 88)) for text in originals):
             items.append(item)
@@ -103,12 +105,17 @@ def portrait_presentation(data, memories, settings):
     return result
 
 
-def original_memory_preview(memories, threshold=88):
-    output = []
+def original_memory_preview(memories):
+    output, seen = [], set()
     for memory in memories:
-        text = memory["correction"] if memory["status"] == "corrected" else memory["sources"][0]["quote"]
-        if not any(near_original(text, previous["text"], threshold) for previous in output):
-            output.append({"text": text, "label": "你的修正" if memory["status"] == "corrected" else "原文", "source": memory["sources"][0]})
-        if len(output) == 3:
-            break
+        for source in memory["sources"]:
+            text = memory["correction"] if memory["status"] == "corrected" else source["quote"]
+            key = (source["record_id"], text)
+            # Collapse only an identical citation from the same original record.
+            # Similar wording on another date remains a distinct occurrence.
+            if key not in seen:
+                seen.add(key)
+                output.append({"text": text, "label": "你的修正" if memory["status"] == "corrected" else "原文", "source": source})
+            if len(output) == 3:
+                return output
     return output
