@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import argparse
+import errno
 import hmac
 import json
 import mimetypes
 import os
 import secrets
+import socket
 import sqlite3
 import sys
 import threading
@@ -312,7 +314,12 @@ class Handler(BaseHTTPRequestHandler):
 
 class LocalServer(ThreadingHTTPServer):
     daemon_threads = True
-    allow_reuse_address = True
+    allow_reuse_address = os.name != "nt"
+
+    def server_bind(self):
+        if os.name == "nt":
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
 
     def get_request(self):
         request, address = super().get_request()
@@ -320,21 +327,35 @@ class LocalServer(ThreadingHTTPServer):
         return request, address
 
 
-def make_server(directory, port=0):
-    server = LocalServer(("127.0.0.1", port), Handler)
-    server.application = Application(directory)
+def make_server(directory, port=0, fallback_port=False):
+    try:
+        server = LocalServer(("127.0.0.1", port), Handler)
+    except OSError as exc:
+        unavailable = exc.errno == errno.EADDRINUSE or getattr(exc, "winerror", None) in (10013, 10048)
+        if not fallback_port or not port or not unavailable:
+            raise
+        server = LocalServer(("127.0.0.1", 0), Handler)
+    try:
+        server.application = Application(directory)
+    except BaseException:
+        server.server_close()
+        raise
     return server
 
 
 def main():
     parser = argparse.ArgumentParser(description="拾光 · 本地日记")
     parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument("--fallback-port", action="store_true", help="端口被占用时自动使用空闲端口")
     parser.add_argument("--data-dir", default=os.environ.get("SHIGUANG_DATA_DIR") or str(ROOT / "data"))
     args = parser.parse_args()
-    server = make_server(args.data_dir, args.port)
+    server = make_server(args.data_dir, args.port, args.fallback_port)
     app = server.application
     app.worker.start()
-    (app.store.directory / "runtime.json").write_text(compact({"pid": os.getpid(), "port": server.server_port, "app": "shiguang-diary"}), encoding="utf-8")
+    runtime_file = app.store.directory / "runtime.json"
+    runtime_temp = runtime_file.with_name("runtime.%s.tmp" % os.getpid())
+    runtime_temp.write_text(compact({"pid": os.getpid(), "port": server.server_port, "app": "shiguang-diary"}), encoding="utf-8")
+    runtime_temp.replace(runtime_file)
     if sys.stdout:
         print("Local: http://127.0.0.1:%s" % server.server_port, flush=True)
     try:

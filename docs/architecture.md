@@ -6,6 +6,8 @@
 
 正式数据默认放在项目的独立 `data/` 子目录，排除在源码版本管理之外，独立于浏览器缓存与构建产物。Windows 启动器和默认命令启动使用同一位置；命令启动也支持 `SHIGUANG_DATA_DIR` 或 `--data-dir` 指定独立目录。迁移先退出服务，保留密钥与外部备份，验证完整性后再处理旧目录。
 
+桌面启动按数据目录使用命名互斥量串行执行，先读取 `runtime.json` 并核对应用标识与实际数据目录，只有同一份日记才复用服务。端口不可用时在绑定阶段改用系统分配端口，不先查空闲再启动；确认实际端口后原子写入运行信息并自动打开地址。不同项目与其他日记实例不会被停止。Windows 使用 `SO_EXCLUSIVEADDRUSE`，避免共享监听端口的不确定行为，依据见 [Microsoft 端口绑定说明](https://learn.microsoft.com/en-us/windows/win32/winsock/using-so-reuseaddr-and-so-exclusiveaddruse)。同源检查始终使用实际监听端口。
+
 ## 关系
 
 | 表 | 用途与约束 |
