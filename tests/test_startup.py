@@ -1,6 +1,8 @@
 """Port conflict and launcher reuse checks, with isolated data and no AI calls."""
 import errno
+from http.client import HTTPResponse
 from http.server import BaseHTTPRequestHandler, HTTPServer
+import io
 import json
 import os
 from pathlib import Path
@@ -12,10 +14,11 @@ import tempfile
 import threading
 import time
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 import urllib.request
 
-from app.server import make_server
+from app.server import Handler, make_server
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -86,6 +89,35 @@ class StartupTests(unittest.TestCase):
                 make_server(self.root / "unopened", self.port, fallback_port=True)
             self.assertEqual(construct.call_count, 1)
             construct.return_value.server_close.assert_called_once()
+
+    def test_shutdown_acknowledgement_reaches_transport_before_process_can_exit(self):
+        # Simulate an immediate process exit when shutdown starts. Only bytes already
+        # flushed to the transport can reach a real CLI client after that point.
+        wire = io.BytesIO()
+        handler = object.__new__(Handler)
+        handler.wfile = io.BufferedWriter(wire)
+        handler.request_version = 'HTTP/1.1'
+        handler.requestline = 'POST /api/shutdown HTTP/1.1'
+        handler.command = 'POST'
+        handler.path = '/api/shutdown'
+        stop = threading.Event()
+        handler.server = SimpleNamespace(application=SimpleNamespace(store=None, worker=SimpleNamespace(stop=stop)), shutdown=lambda: None)
+        received = []
+        try:
+            with patch('app.server.threading.Thread') as thread:
+                thread.return_value.start.side_effect = lambda: received.append(wire.getvalue())
+                handler.mutate('/api/shutdown', {})
+            self.assertTrue(stop.is_set())
+            self.assertEqual(len(received), 1)
+            class ClientSocket:
+                def makefile(self, *args, **kwargs): return io.BytesIO(received[0])
+            response = HTTPResponse(ClientSocket())
+            response.begin()
+            self.assertEqual(response.status, 200)
+            self.assertEqual(json.loads(response.read()), {'ok': True})
+            response.close()
+        finally:
+            handler.wfile.close()
 
     def stop_process(self, process, url=None):
         if process.poll() is not None:

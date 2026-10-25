@@ -236,6 +236,7 @@ class Handler(MediaHandlerMixin, BaseHTTPRequestHandler):
         store = self.app.store
         result = {"ok": True}
         mutated = False
+        shutdown_requested = False
         if path == "/api/entries/save":
             result = {"entry": store.save_entry(data, data.get("entry_id"))}
             mutated = True
@@ -318,7 +319,7 @@ class Handler(MediaHandlerMixin, BaseHTTPRequestHandler):
             result = store.import_data(data.get("bundle"), replace=data.get("mode") == "replace")
         elif path == "/api/shutdown":
             self.app.worker.stop.set()
-            threading.Thread(target=self.server.shutdown, daemon=True).start()
+            shutdown_requested = True
         else:
             return self.send({"error": "操作不存在"}, 404)
         if mutated:
@@ -327,6 +328,14 @@ class Handler(MediaHandlerMixin, BaseHTTPRequestHandler):
             except Exception:
                 result["warning"] = "记录已保存，但自动备份失败，请到设置检查"
         self.send(result)
+        if shutdown_requested:
+            # The CLI can exit as soon as serve_forever returns. Publish the complete
+            # acknowledgement before allowing that exit, including buffered transports.
+            try:
+                self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                pass
+            threading.Thread(target=self.server.shutdown, daemon=True).start()
 
 
 class LocalServer(ThreadingHTTPServer):
