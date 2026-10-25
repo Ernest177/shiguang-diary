@@ -1,4 +1,41 @@
 @charset "UTF-8";
+/* Originals stay local; the same flowing layout is used by diaries and previews. */
+.media-toolbar { display:flex; align-items:center; gap:16px; flex-wrap:wrap; padding:0 22px 16px; color:var(--muted); font-size:12px; }
+#media-tools { padding:0 22px; }
+.media-toolbar button { color:var(--green); font-size:14px; }
+.media-items { display:grid; gap:8px; padding-bottom:12px; }
+.media-item { display:flex; align-items:center; gap:12px; background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:10px; }
+.media-item > img, .media-video-mark { width:52px; height:52px; object-fit:cover; flex-shrink:0; border-radius:4px; }
+.media-video-mark { display:grid; place-items:center; background:var(--soft-green); color:var(--green); font-size:28px; }
+.media-item-info { min-width:0; flex:1; }
+.media-item-info strong { display:block; font-size:13px; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.media-item-info small { display:block; margin-top:5px; color:var(--muted); font-size:11px; }
+.media-item-actions { display:flex; align-items:center; gap:8px; }
+.media-item-actions .icon-button { font-size:20px; }
+.media-failed { border-color:var(--red); }
+.media-failed small { color:var(--red); }
+.media-preview { border-top:1px solid var(--line); padding:12px 0; }
+.media-preview summary { color:var(--green); cursor:pointer; }
+#media-preview-content { margin-top:18px; }
+.media-privacy { color:var(--muted); font-size:11px; line-height:1.8; margin:0 0 14px; }
+.media-dragover { outline:2px dashed var(--green); outline-offset:5px; }
+.journal-content { overflow-wrap:anywhere; }
+.journal-content > .entry-body { white-space:pre-wrap; }
+.journal-media { margin:20px 0; max-width:740px; }
+.journal-media .photo-open { padding:0; display:block; max-width:100%; cursor:zoom-in; border-radius:8px; overflow:hidden; }
+.journal-media img { display:block; max-width:100%; max-height:640px; width:auto; height:auto; object-fit:contain; border-radius:8px; background:var(--panel); }
+.journal-media video { display:block; width:100%; max-height:560px; border-radius:8px; background:#202820; }
+.journal-media figcaption { display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-top:8px; color:var(--muted); font-size:11px; line-height:1.6; }
+.journal-media figcaption a { color:var(--green); text-decoration:underline; text-underline-offset:3px; }
+.media-unplayable::after { content:"浏览器暂不支持此视频编码，可下载原件播放。"; display:block; margin-top:8px; color:var(--muted); font-size:12px; }
+.photo-viewer img { display:block; max-width:100%; max-height:78vh; object-fit:contain; margin:auto; }
+.media-history { margin:20px 0; }
+.media-history summary { cursor:pointer; color:var(--green); }
+@media(max-width:640px) {
+  .media-item { flex-wrap:wrap; }
+  .media-item-actions { margin-left:auto; }
+  .journal-media img { max-height:480px; }
+}
 :root {
   --paper: #fafaf6;
   --sidebar: #f1f2eb;

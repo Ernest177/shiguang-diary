@@ -339,11 +339,12 @@ class GrowthTests(unittest.TestCase):
                 db.executescript(SCHEMA.split("CREATE TABLE IF NOT EXISTS memory_exclusions")[0] + "PRAGMA user_version=2;")
             db.close()
             target = Store(folder)
-            self.assertEqual(len(list((Path(folder) / "upgrade-backups").glob("before-v3-*.sqlite3"))), 1)
+            self.assertEqual(len(list((Path(folder) / "upgrade-backups").glob("before-v4-*.sqlite3"))), 1)
             bundle = target.export(); bundle["schema_version"] = 2
             del bundle["tables"]["memory_exclusions"]; del bundle["tables"]["growth_receipts"]
+            for table in ("attachments", "media_versions", "entry_media"): del bundle["tables"][table]
             target.import_data(bundle, replace=True)
-            with target.connection() as db: self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], 3)
+            with target.connection() as db: self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], 4)
 
 
 if __name__ == "__main__":

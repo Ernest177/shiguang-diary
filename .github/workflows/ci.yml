@@ -47,6 +47,7 @@ jobs:
           node --check web/app.js
           node --check web/about.js
           node --check web/usage.js
+          node --check web/media.js
       - name: Run system scenario checks
         # Includes real SQLite commits/snapshots and native Windows launchers.
         # Hosted disk speed varies; keep every scenario and a bounded step.
@@ -67,6 +68,9 @@ jobs:
       - name: Check incremental growth archive rendering contracts
         timeout-minutes: 1
         run: node tests/test_growth_ui.js
+      - name: Check local media layout and draft contracts
+        timeout-minutes: 1
+        run: node tests/test_media_ui.js
       - name: Check synthetic request-size reduction (no model calls)
         timeout-minutes: 1
         run: python tools/check_request_costs.py

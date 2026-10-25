@@ -254,8 +254,8 @@ class AboutTests(unittest.TestCase):
             target.restore_backup(old_backup.name)
             self.assertEqual(target.entries('2026-10-19')[0]['body'],'旧版本日记')
             bundle=target.export()
-            self.assertEqual(bundle['schema_version'],3)
-            legacy_bundle={**bundle,'schema_version':1,'tables':{k:v for k,v in bundle['tables'].items() if k not in ('experiences','memory_permissions','memories','memory_sources','memory_suppressions','personal_reports','memory_exclusions','growth_receipts')}}
+            self.assertEqual(bundle['schema_version'],4)
+            legacy_bundle={**bundle,'schema_version':1,'tables':{k:v for k,v in bundle['tables'].items() if k not in ('experiences','memory_permissions','memories','memory_sources','memory_suppressions','personal_reports','memory_exclusions','growth_receipts','attachments','media_versions','entry_media')}}
             target.import_data(legacy_bundle,replace=True)
             self.assertEqual(target.entries('2026-10-19')[0]['body'],'旧版本日记')
 

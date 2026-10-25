@@ -24,6 +24,7 @@ from app import __version__ as VERSION
 from app.ai import AIError, KeyStore, ModelClient, Worker, validate_config
 from app.store import Store, compact, day_valid, tzinfo
 from app.usage import UsageLedger, call_scope
+from app.media_http import MediaHandlerMixin
 
 ROOT = Path(__file__).resolve().parent.parent
 WEB = ROOT / "web"
@@ -37,6 +38,7 @@ class Application:
         self.client = ModelClient(self.keys, self.usage)
         self.worker = Worker(self.store, self.client, recap_delay=30)
         self.token = secrets.token_urlsafe(40)
+        self.media_token = secrets.token_urlsafe(40)
 
     def public_settings(self):
         values = self.store.settings()
@@ -74,7 +76,7 @@ class Application:
         return values
 
 
-class Handler(BaseHTTPRequestHandler):
+class Handler(MediaHandlerMixin, BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     server_version = "ShiguangLocal/1"
 
@@ -94,16 +96,18 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("Cross-Origin-Resource-Policy", "same-origin")
-        self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; object-src 'none'")
+        self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; font-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; object-src 'none'")
+        if urllib.parse.urlsplit(self.path).path == "/api/bootstrap" and status == 200:
+            self.send_header("Set-Cookie", "ShiguangMedia" + str(self.server.server_port) + "=" + self.app.media_token + "; Path=/api/media/; HttpOnly; SameSite=Strict")
         if filename:
             self.send_header("Content-Disposition", "attachment; filename=\"" + filename + "\"")
         self.end_headers()
         try:
-            self.wfile.write(raw)
+            if self.command != "HEAD": self.wfile.write(raw)
         except (BrokenPipeError, ConnectionResetError):
             pass
 
-    def guard(self, mutation=False, token=True):
+    def guard(self, mutation=False, token=True, media=False):
         port = self.server.server_port
         allowed_hosts = {"127.0.0.1:" + str(port), "localhost:" + str(port)}
         if self.headers.get("Host") not in allowed_hosts:
@@ -113,7 +117,7 @@ class Handler(BaseHTTPRequestHandler):
             raise PermissionError("请求来源不受信任")
         if self.headers.get("Sec-Fetch-Site") == "cross-site":
             raise PermissionError("不允许跨站请求")
-        if token and not hmac.compare_digest(self.headers.get("X-Notes-Token", ""), self.app.token):
+        if token and not hmac.compare_digest(self.headers.get("X-Notes-Token", ""), self.app.token) and not (media and hmac.compare_digest(self.media_cookie(), self.app.media_token)):
             raise PermissionError("连接已更新，请刷新页面后重试")
         if mutation and self.headers.get_content_type() != "application/json":
             raise ValueError("需要 JSON 格式请求")
@@ -134,7 +138,11 @@ class Handler(BaseHTTPRequestHandler):
         try:
             path = urllib.parse.urlsplit(self.path).path
             query = {k: v[0] for k, v in urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).items()}
-            self.guard(mutation, token=path.startswith("/api/") and path not in ("/api/bootstrap", "/api/health"))
+            raw = mutation and path in ("/api/media/upload", "/api/media/import")
+            if mutation: self.close_connection = True
+            self.guard(mutation and not raw, token=path.startswith("/api/") and path not in ("/api/bootstrap", "/api/health"), media=not mutation and path.startswith("/api/media/"))
+            if raw: return self.raw_media(path, query)
+            if not mutation and path.startswith("/api/media/"): return self.read_media(path, query)
             if mutation:
                 if path in ("/api/bootstrap", "/api/health"):
                     raise PermissionError("此接口仅支持读取")
@@ -156,6 +164,9 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         self.dispatch(mutation=True)
 
+    def do_HEAD(self):
+        self.dispatch()
+
     def read(self, path, query):
         store = self.app.store
         if path == "/api/health":
@@ -170,7 +181,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/history":
             with store.connection() as db:
                 rows = [dict(r) for r in db.execute("SELECT * FROM entry_versions WHERE entry_id=? ORDER BY revision DESC", (query.get("id"),))]
-            return self.send({"versions": rows})
+            return self.send({"versions": rows, "media_versions": store.media_history(query.get("id"))})
         if path == "/api/about":
             result = store.about_state(query.get("month", store.today()[:7]))
             result["growth"]["usage"] = self.app.usage.growth_usage(store.settings())
@@ -211,8 +222,10 @@ class Handler(BaseHTTPRequestHandler):
                     lines.extend(["## " + memory["title"], "", (memory["correction"] if memory["status"] == "corrected" else memory["detail"]),
                                   "", "状态：" + {"pending": "待确认", "confirmed": "已确认", "corrected": "已修正"}[memory["status"]], ""])
                 return self.send("\n".join(lines).encode(), content_type="text/markdown; charset=utf-8", filename="shiguang-diary.md")
+            if data["tables"]["attachments"]:
+                raise ValueError("这份日记包含附件，请导出 ZIP 完整备份以保留原件")
             return self.send(json.dumps(data, ensure_ascii=False, indent=2).encode(), filename="shiguang-backup.json")
-        files = {"/": "index.html", "/index.html": "index.html", "/app.js": "app.js", "/about.js": "about.js", "/usage.js": "usage.js", "/styles.css": "styles.css", "/favicon.svg": "favicon.svg"}
+        files = {"/": "index.html", "/index.html": "index.html", "/app.js": "app.js", "/media.js": "media.js", "/about.js": "about.js", "/usage.js": "usage.js", "/styles.css": "styles.css", "/favicon.svg": "favicon.svg"}
         if path in files:
             file = WEB / files[path]
             content = mimetypes.guess_type(file.name)[0] or "application/octet-stream"
@@ -229,6 +242,10 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/entries/delete":
             store.delete_entry(data.get("id"))
             mutated = True
+        elif path == "/api/media/discard":
+            store.discard_media(data.get("id"))
+        elif path == "/api/media/restore":
+            result = store.restore_archive(data.get("ticket"), replace=data.get("mode") == "replace")
         elif path == "/api/actions/update":
             result = {"history_id": store.update_action(data.get("id"), data)}
             mutated = True

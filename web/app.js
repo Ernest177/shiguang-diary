@@ -92,21 +92,23 @@ function draftWrite() {
     body: $("#entry-body").value,
     day: $("#entry-day").value,
     ai: $("#entry-ai").checked,
+    attachments: typeof mediaDraft === "function" ? mediaDraft() : [],
     edit: state.edit
-      ? { id: state.edit.id, revision: state.edit.revision }
+      ? { id: state.edit.id, revision: state.edit.revision, media_revision: state.edit.media_revision || 0 }
       : null,
   };
   try {
     localStorage.setItem("shiguang-draft", JSON.stringify(payload));
-    $("#draft-status").textContent = payload.body ? "草稿已暂存" : "只管写下来";
+    $("#draft-status").textContent = payload.body || payload.attachments.length ? "草稿已暂存" : "只管写下来";
   } catch {
     $("#draft-status").textContent = "草稿暂存不可用，请及时保存";
   }
 }
 function restoreDraft() {
   const draft = draftRead();
-  if (draft?.body) {
-    $("#entry-body").value = draft.body;
+  if (draft?.body || draft?.attachments?.length) {
+    $("#entry-body").value = draft.body || "";
+    if (typeof setComposerMedia === "function") setComposerMedia(draft.attachments || []);
     $("#entry-day").value = draft.day;
     $("#entry-ai").checked = draft.ai !== false;
     draftId = draft.id || crypto.randomUUID();
@@ -261,6 +263,7 @@ function renderEntries() {
       ? "今天的片段 "
       : "这一天的片段 ";
   if (!records.length) {
+    $("#entries").mediaRenderKey = null;
     $("#entries").innerHTML = state.query
       ? empty(
           "暂时没有找到这个片段",
@@ -274,13 +277,16 @@ function renderEntries() {
         );
     return;
   }
+  const renderKey = JSON.stringify([records, state.query, state.settings.timezone, state.settings.ai_mode]);
+  if ($("#entries").mediaRenderKey === renderKey) return;
+  $("#entries").mediaRenderKey = renderKey;
   $("#entries").innerHTML = records
     .map(
       (
         entry,
       ) => `<article id="entry-${escapeHTML(entry.id)}" class="entry-card">
     <div class="entry-top"><span class="entry-time">${escapeHTML(timeAt(entry.created_at, state.query.length > 0))}</span>${entry.revision > 1 ? '<span class="entry-tag">已编辑</span>' : ""}${state.query ? `<span class="entry-tag">${escapeHTML(entry.journal_day)}</span>` : ""}<div class="entry-menu"><button class="icon-button" data-history="${escapeHTML(entry.id)}" aria-label="查看记录历史">${icon("history")}</button><button class="icon-button" data-edit="${escapeHTML(entry.id)}" aria-label="编辑记录">${icon("edit")}</button><button class="icon-button" data-delete="${escapeHTML(entry.id)}" aria-label="删除记录">${icon("trash")}</button></div></div>
-    <p class="entry-body">${escapeHTML(entry.body)}</p>
+    ${typeof mixedMediaHTML === "function" ? mixedMediaHTML(entry.body, entry.attachments) : `<p class="entry-body">${escapeHTML(entry.body)}</p>`}
     ${entry.analysis && (!entry.summary_redundant || entry.analysis.actions.length || entry.analysis.insights.length) ? `<details class="analysis-details"><summary>${entry.summary_redundant ? "提取到的行动与线索" : "AI 整理 · " + escapeHTML(entry.analysis.summary)}</summary>${entry.analysis.insights.map((item) => `<div class="insight-line">${item.type === "idea" ? "想法 · " : ""}${escapeHTML(item.text)}<div class="evidence">“${escapeHTML(item.quote)}”</div></div>`).join("")}${entry.analysis.actions.map((a) => `<div class="insight-line">${{ task: "待办", opportunity: "值得做", question: "待澄清" }[a.kind]} · ${escapeHTML(a.title)}<div class="evidence">“${escapeHTML(a.quote)}”</div></div>`).join("")}</details>` : ""}
     <div class="entry-bottom"><span class="status-label ${entry.analysis_error ? "error" : ""}" title="${escapeHTML(entry.analysis_error || "")}">${icon(entry.analysis ? "sparkles" : "lock")}${escapeHTML(statusText(entry))}</span><span>·</span><span>${entry.body.length.toLocaleString()} 字</span>${entry.ai_enabled ? `<button class="retry-button" data-memory-permission="${escapeHTML(entry.id)}">${entry.memory_enabled ? "已纳入成长记录 · 排除" : "纳入成长记录"}</button>` : ""}${entry.ai_enabled && state.settings.ai_mode !== "off" ? `<button class="retry-button" data-retry="${escapeHTML(entry.id)}">${entry.analysis ? "重新整理" : "重试整理"}</button>` : ""}</div>
     ${entry.analysis_error && state.settings.ai_mode !== "off" ? `<div class="notice error">${escapeHTML(entry.analysis_error)}</div>` : ""}
@@ -431,7 +437,7 @@ function renderSettings() {
       )
       .join(
         "",
-      )}</select><small>更改显示时区会调整时间的呈现，历史记录的所属日期保持原样。</small></div></section><section class="settings-section"><h2>数据与备份</h2><p>正式记录独立保存在本机数据库中。浏览器缓存可以清理，数据目录需要妥善保管。</p><div class="path-info"><strong>日记目录</strong><br>${escapeHTML(s.data_dir)}<br><strong>当前备份目录</strong><br>${escapeHTML(s.effective_backup_dir)}<br><strong>最近备份</strong> · ${s.last_backup_at ? escapeHTML(s.last_backup_at.split(" ")[0]) : "尚未创建"}</div>${s.backup_error ? `<div class="notice error">${escapeHTML(s.backup_error)}</div>` : ""}<div class="form-grid"><div class="form-field"><label for="backup-dir">备份目录</label><input id="backup-dir" name="backup_dir" value="${escapeHTML(s.backup_dir)}" placeholder="留空使用默认目录"><small>可以填写其他磁盘的完整路径，帮助应对本机磁盘故障。</small></div><div class="form-field"><label for="backup-keep">保留最近的备份数量</label><input type="number" id="backup-keep" name="backup_keep" min="2" max="100" value="${s.backup_keep}"></div></div><div class="setting-actions"><button type="button" id="backup-now" class="secondary-button">${icon("archive")}立即备份</button><button type="button" data-export="json" class="secondary-button">${icon("download")}导出完整备份</button><button type="button" data-export="markdown" class="secondary-button">导出 Markdown</button><button type="button" id="import-open" class="text-button">导入备份 ↗</button><input id="import-file" type="file" accept=".json,application/json" hidden></div><div id="backup-list"></div><p class="privacy-footnote">每天发生变更后会自动创建一份数据库快照。同一磁盘上的副本无法应对磁盘损坏，建议定期导出到其他磁盘。本版日记数据库未额外加密，请同时保护好 Windows 账户与磁盘。</p></section><div class="settings-bottom"><button type="submit" class="primary-button">保存设置 ${icon("check")}</button><small>拾光 v${escapeHTML(state.version)} · 本机运行，无遥测</small></div></form><section class="settings-section"><button id="shutdown" class="text-button">退出拾光本地服务</button><p class="privacy-footnote">关闭网页后，本地服务仍可整理已保存的日记。退出服务后，双击「启动拾光」即可重新打开。</p></section>`;
+      )}</select><small>更改显示时区会调整时间的呈现，历史记录的所属日期保持原样。</small></div></section><section class="settings-section"><h2>数据与备份</h2><p>正式记录独立保存在本机数据库中。浏览器缓存可以清理，数据目录需要妥善保管。</p><div class="path-info"><strong>日记目录</strong><br>${escapeHTML(s.data_dir)}<br><strong>当前备份目录</strong><br>${escapeHTML(s.effective_backup_dir)}<br><strong>最近备份</strong> · ${s.last_backup_at ? escapeHTML(s.last_backup_at.split(" ")[0]) : "尚未创建"}</div>${s.backup_error ? `<div class="notice error">${escapeHTML(s.backup_error)}</div>` : ""}<div class="form-grid"><div class="form-field"><label for="backup-dir">备份目录</label><input id="backup-dir" name="backup_dir" value="${escapeHTML(s.backup_dir)}" placeholder="留空使用默认目录"><small>可以填写其他磁盘的完整路径，帮助应对本机磁盘故障。</small></div><div class="form-field"><label for="backup-keep">保留最近的备份数量</label><input type="number" id="backup-keep" name="backup_keep" min="2" max="100" value="${s.backup_keep}"></div></div><div class="setting-actions"><button type="button" id="backup-now" class="secondary-button">${icon("archive")}立即备份</button><button type="button" data-export="archive" class="secondary-button">${icon("download")}导出完整备份</button><button type="button" data-export="markdown" class="secondary-button">导出文字 Markdown</button><button type="button" id="import-open" class="text-button">导入备份 ↗</button><input id="import-file" type="file" accept=".zip,.json,application/zip,application/json" hidden></div><div id="backup-list"></div><p class="privacy-footnote">每天发生变更后会自动创建一份数据库快照，附件原件另存于备份目录的 media 文件夹，按内容去重。迁移时请一起保留，或直接导出 ZIP 完整备份。同一磁盘上的副本无法应对磁盘损坏，建议定期导出到其他磁盘。本版日记数据库未额外加密，请同时保护好 Windows 账户与磁盘。</p></section><div class="settings-bottom"><button type="submit" class="primary-button">保存设置 ${icon("check")}</button><small>拾光 v${escapeHTML(state.version)} · 本机运行，无遥测</small></div></form><section class="settings-section"><button id="shutdown" class="text-button">退出拾光本地服务</button><p class="privacy-footnote">关闭网页后，本地服务仍可整理已保存的日记。退出服务后，双击「启动拾光」即可重新打开。</p></section>`;
   $("#settings-form").onsubmit = saveSettings;
   $("#ai-mode").onchange = updateModeHint;
   $("#test-ai").onclick = testAI;
@@ -579,6 +585,7 @@ function setView(view) {
   if (!["record", "review", "actions", "settings", "about", "usage"].includes(view))
     return;
   state.view = view;
+  if (view !== "record") $$("#entries video").forEach(video => video.pause());
   history.replaceState(null, "", `#${view}`);
   if (view === "settings") renderSettings();
   if (view === "about") {
@@ -603,9 +610,11 @@ async function selectDay(day) {
 
 async function saveEntry() {
   if (state.saving) return;
+  if (mediaUploading) { toast("附件正在上传，请稍候"); return; }
+  if (composerMedia.some(a => a.error)) { toast("请移除未上传成功的附件，再保存日记"); return; }
   const body = $("#entry-body").value;
-  if (!body.trim()) {
-    toast("先写下一个小片段吧");
+  if (!body.trim() && !mediaHasDraft()) {
+    toast("写下一个片段，或添加图片、视频吧");
     $("#entry-body").focus();
     return;
   }
@@ -614,6 +623,8 @@ async function saveEntry() {
     body,
     journal_day: $("#entry-day").value,
     ai_enabled: $("#entry-ai").checked,
+    attachments: mediaLayout(),
+    media_revision: state.edit?.media_revision || 0,
     ...(state.edit
       ? { entry_id: state.edit.id, revision: state.edit.revision }
       : {}),
@@ -627,8 +638,10 @@ async function saveEntry() {
     state.month = dateAt(state.day);
     state.query = "";
     $("#search").value = "";
-    if ($("#entry-body").value === body) {
+    composerMedia.forEach(a => { if (result.entry.attachments.some(saved => saved.id === a.id)) a.published = 1; });
+    if ($("#entry-body").value === body && JSON.stringify(mediaLayout()) === JSON.stringify(payload.attachments)) {
       $("#entry-body").value = "";
+      setComposerMedia();
       state.edit = null;
       draftId = crypto.randomUUID();
       $("#entry-day").value = state.day;
@@ -649,7 +662,7 @@ async function saveEntry() {
     toast(error.message);
   } finally {
     state.saving = false;
-    $("#save-entry").disabled = false;
+    $("#save-entry").disabled = mediaUploading;
   }
 }
 function resetComposer() {
@@ -658,10 +671,11 @@ function resetComposer() {
   $("#cancel-edit").hidden = true;
 }
 async function editEntry(id) {
+  if (mediaBusy()) return;
   const entry = state.data.entries.find((e) => e.id === id);
   if (!entry) return;
   if (
-    $("#entry-body").value.trim() &&
+    ($("#entry-body").value.trim() || mediaHasDraft()) &&
     !(await ask(
       "切换到编辑记录？",
       "输入框中还有未保存的内容。继续会替换当前草稿。",
@@ -671,6 +685,7 @@ async function editEntry(id) {
     return;
   state.edit = entry;
   $("#entry-body").value = entry.body;
+  setComposerMedia(entry.attachments);
   $("#entry-day").value = entry.journal_day;
   $("#entry-ai").checked = !!entry.ai_enabled;
   $("#composer-heading").textContent = "修改这一个片段";
@@ -682,8 +697,10 @@ async function editEntry(id) {
   $("#entry-body").focus();
 }
 $("#cancel-edit").onclick = () => {
+  if (mediaBusy()) return;
   state.edit = null;
   $("#entry-body").value = "";
+  setComposerMedia();
   draftId = crypto.randomUUID();
   resetComposer();
   draftWrite();
@@ -804,7 +821,7 @@ function editAction(id) {
 async function showHistory(id) {
   const data = await api(`/api/history?id=${encodeURIComponent(id)}`);
   showModal(
-    `<h2>原文的变化</h2><p>这里保留你每次保存的版本，AI 不会改写这些原文。</p>${data.versions.map((v) => `<div class="version-block"><p>版本 ${v.revision} · ${escapeHTML(timeAt(v.saved_at, true))} · 所属 ${v.journal_day}</p><pre>${escapeHTML(v.body)}</pre></div>`).join("")}<div class="modal-actions"><button class="secondary-button" data-close-modal>关闭</button></div>`,
+    `<h2>留下的版本</h2><p>文字与附件分别保留历史。只调整附件不会重新调用 AI。</p>${data.media_versions?.length ? `<details class="media-history" open><summary>图文历史 · ${data.media_versions.length} 版</summary>${data.media_versions.map(v => `<div class="version-block"><p>附件版本 ${v.revision} · 文字版本 ${v.entry_revision} · ${escapeHTML(timeAt(v.saved_at, true))}</p>${mixedMediaHTML(v.body, v.attachments)}</div>`).join("")}</details>` : ""}<details ${data.media_versions?.length ? "" : "open"}><summary>文字历史</summary>${data.versions.map((v) => `<div class="version-block"><p>文字版本 ${v.revision} · ${escapeHTML(timeAt(v.saved_at, true))} · 所属 ${v.journal_day}</p><pre>${escapeHTML(v.body)}</pre></div>`).join("")}</details><div class="modal-actions"><button class="secondary-button" data-close-modal>关闭</button></div>`,
   );
 }
 async function goSource(id, day) {
@@ -821,6 +838,11 @@ async function goSource(id, day) {
 }
 
 async function download(format) {
+  if (format === "archive") {
+    const link = document.createElement("a");
+    link.href = "/api/media/archive"; link.download = "拾光完整备份.zip"; link.click();
+    toast("正在准备完整备份，文件较大时请等待浏览器下载完成"); return;
+  }
   const blob = await api(`/api/export?format=${format}`, undefined, true);
   const url = URL.createObjectURL(blob),
     link = document.createElement("a");
@@ -834,13 +856,19 @@ async function previewImport(event) {
   const file = event.target.files[0];
   if (!file) return;
   try {
-    if (file.size > 30_000_000) throw new Error("备份文件超过 30 MB");
-    importedBundle = JSON.parse(await file.text());
-    const preview = await api("/api/import/preview", {
-      bundle: importedBundle,
-    });
+    let preview;
+    if (/\.zip$/i.test(file.name)) {
+      if (file.size > 16 * 1024 * 1024 * 1024) throw new Error("完整备份最大 16 GB");
+      toast("正在上传并校验完整备份，请稍候");
+      const result = await uploadBinary("/api/media/import", file);
+      importedBundle = { ticket: result.ticket }; preview = result.preview;
+    } else {
+      if (file.size > 30_000_000) throw new Error("JSON 备份超过 30 MB，请使用 ZIP 完整备份");
+      importedBundle = JSON.parse(await file.text());
+      preview = await api("/api/import/preview", { bundle: importedBundle });
+    }
     showModal(
-      `<h2>导入前，确认一下</h2><p>备份包含 ${preview.entries} 条日记和 ${preview.actions} 项行动。<br>可新增 ${preview.new} 条，重复 ${preview.duplicates} 条，冲突 ${preview.conflicts} 条。</p><div class="notice">合并时保留本机已有记录与行动选择。完整恢复会用备份替换现有日记；两种方式都会先自动备份。</div><div class="modal-actions"><button class="secondary-button" data-close-modal>取消</button><button id="import-replace" class="secondary-button danger-button">完整恢复</button><button id="import-merge" class="primary-button">合并导入</button></div>`,
+      `<h2>导入前，确认一下</h2><p>备份包含 ${preview.entries} 条日记、${preview.actions} 项行动和 ${preview.attachments || 0} 个附件。<br>可新增 ${preview.new} 条，重复 ${preview.duplicates} 条，冲突 ${preview.conflicts} 条。</p><div class="notice">合并时保留本机已有记录与行动选择。完整恢复会用备份替换现有日记；两种方式都会先自动备份。</div><div class="modal-actions"><button class="secondary-button" data-close-modal>取消</button><button id="import-replace" class="secondary-button danger-button">完整恢复</button><button id="import-merge" class="primary-button">合并导入</button></div>`,
     );
     $("#import-merge").onclick = () => commitImport("merge");
     $("#import-replace").onclick = async () => {
@@ -861,7 +889,7 @@ async function previewImport(event) {
 }
 async function commitImport(mode) {
   try {
-    await api("/api/import", { bundle: importedBundle, mode });
+    await api(importedBundle?.ticket ? "/api/media/restore" : "/api/import", importedBundle?.ticket ? { ticket: importedBundle.ticket, mode } : { bundle: importedBundle, mode });
     modal.close();
     importedBundle = null;
     toast("备份已导入");
@@ -890,7 +918,7 @@ async function restoreBackup(name) {
   }
 }
 async function shutdown() {
-  if ($("#entry-body").value.trim()) {
+  if ($("#entry-body").value.trim() || mediaHasDraft() || mediaUploading) {
     toast("请先保存输入框里的记录，再退出服务");
     return;
   }
@@ -981,6 +1009,7 @@ async function init() {
     state.day = boot.today;
     state.month = dateAt(boot.today);
     state.settings = boot.settings;
+    initMedia();
     if (!$("#entry-day").value) $("#entry-day").value = boot.today;
     await loadState();
     const view = location.hash.slice(1);
@@ -1001,7 +1030,8 @@ setInterval(() => {
     state.data &&
     !document.hidden &&
     state.view !== "settings" &&
-    !modal.open
+    !modal.open &&
+    !$$("#entries video").some(video => !video.paused && !video.ended)
   )
     loadState({ silent: true });
 }, 7000);

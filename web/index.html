@@ -13,6 +13,7 @@
     <link rel="stylesheet" href="/styles.css" />
     <script src="/about.js" defer></script>
     <script src="/usage.js" defer></script>
+    <script src="/media.js" defer></script>
     <script src="/app.js" defer></script>
   </head>
   <body>
@@ -139,6 +140,8 @@
                   placeholder="一件小事、一个想法，或是还没理清的心情。&#10;从这里开始，写给自己。"
                   maxlength="60000"
                 ></textarea>
+                <div class="media-toolbar"><button id="add-media" type="button" class="text-button">＋ 图片 / 视频</button><span>插在文字光标处 · 也可拖入或粘贴图片</span><input id="media-files" type="file" multiple hidden></div>
+                <div id="media-tools" hidden><div id="media-items" class="media-items" aria-live="polite"></div><details id="media-preview" class="media-preview"><summary>查看图文预览</summary><div id="media-preview-content"></div></details><p class="media-privacy">原件仅保存在本机，不发送给 AI。移除的附件仍保留在这条日记的编辑历史中。</p></div>
                 <div class="composer-options">
                   <label class="date-input-wrap"
                     ><span data-icon="calendar"></span

@@ -14,6 +14,7 @@ from pathlib import Path
 from app.about import ABOUT_SCHEMA, ABOUT_TABLES, AboutMixin
 from app.growth import GROWTH_SCHEMA, GROWTH_TABLES, GROWTH_DEFAULTS, GrowthMixin
 from app.organization import ORGANIZATION_DEFAULTS, near_original, day_presentation, automatic
+from app.media import MEDIA_SCHEMA, MEDIA_TABLES, MediaMixin
 
 
 def now():
@@ -77,14 +78,14 @@ CREATE TABLE IF NOT EXISTS jobs(
  id TEXT PRIMARY KEY,kind TEXT NOT NULL,target TEXT NOT NULL,revision INTEGER NOT NULL,
  status TEXT NOT NULL,attempts INTEGER NOT NULL DEFAULT 0,error TEXT,
  retry_at TEXT,updated_at TEXT NOT NULL,UNIQUE(kind,target));
-""" + ABOUT_SCHEMA + GROWTH_SCHEMA + "\nPRAGMA user_version=3;\n"
+""" + ABOUT_SCHEMA + GROWTH_SCHEMA + MEDIA_SCHEMA + "\nPRAGMA user_version=4;\n"
 
 DEFAULTS = {"timezone": "Asia/Shanghai", "ai_mode": "off", "ai_base_url": "",
             "ai_model": "", "cloud_consent": False, "backup_keep": 30,
             "backup_dir": "", "last_backup_at": "", "backup_error": "", **GROWTH_DEFAULTS, **ORGANIZATION_DEFAULTS}
 
 
-class Store(GrowthMixin, AboutMixin):
+class Store(MediaMixin, GrowthMixin, AboutMixin):
     def __init__(self, directory):
         self.directory = Path(directory).resolve()
         self.directory.mkdir(parents=True, exist_ok=True)
@@ -92,12 +93,12 @@ class Store(GrowthMixin, AboutMixin):
         self.lock = threading.RLock()
         with self.connection() as db:
             version = db.execute("PRAGMA user_version").fetchone()[0]
-            if version > 3:
+            if version > 4:
                 raise RuntimeError("数据库来自更新的应用版本，请使用较新程序打开")
-            if version in (1, 2):
+            if version in (1, 2, 3):
                 folder = self.directory / "upgrade-backups"
                 folder.mkdir(exist_ok=True)
-                snapshot = folder / ("before-v3-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ") + ".sqlite3")
+                snapshot = folder / ("before-v4-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ") + ".sqlite3")
                 with contextlib.closing(sqlite3.connect(snapshot)) as target:
                     db.backup(target)
                     if target.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
@@ -151,22 +152,36 @@ class Store(GrowthMixin, AboutMixin):
 
     def save_entry(self, payload, entry_id=None):
         body = payload.get("body", "")
-        if not isinstance(body, str) or not body.strip() or len(body) > 60000:
-            raise ValueError("请输入 1–60,000 个字符的记录")
+        if not isinstance(body, str) or len(body) > 60000:
+            raise ValueError("记录最多 60,000 个字符")
         day = day_valid(payload.get("journal_day", self.today()))
         enabled = bool(payload.get("ai_enabled", True))
         with self.connection() as db:
             previous = db.execute("SELECT * FROM entries WHERE id=?", (entry_id or payload.get("id", ""),)).fetchone()
+            media = self.media_for(previous["id"], db) if previous else {"attachments": [], "media_revision": 0}
+            values = payload.get("attachments", [{"id": a["id"], "position": min(a["position"], len(body))} for a in media["attachments"]])
+            layout = self.media_layout(values, body, db)
+            leading = len(body) - len(body.lstrip())
+            body = body.strip()
+            layout = [{**a, "position": min(len(body), max(0, a["position"] - leading))} for a in layout]
+            if not body and not layout:
+                raise ValueError("请写下文字，或添加图片、视频")
+            if not body:
+                enabled = False
             if entry_id and not previous:
                 raise ValueError("记录已不存在，请刷新后重试")
             if not entry_id and previous:
-                if previous["body"] != body.strip() or previous["journal_day"] != day:
+                if previous["body"] != body or previous["journal_day"] != day or layout != [{"id": a["id"], "position": a["position"]} for a in media["attachments"]]:
                     raise ValueError("保存请求重复且内容发生变化，请刷新确认已保存的记录")
-                return dict(previous)
+                return {**dict(previous), **media}
             if previous and payload.get("revision") != previous["revision"]:
                 raise ValueError("记录已在其他窗口更新，请重新打开后编辑")
-            if previous and (previous["body"], previous["journal_day"], bool(previous["ai_enabled"])) == (body.strip(), day, enabled):
-                return dict(previous)
+            if previous and "attachments" in payload and payload.get("media_revision") != media["media_revision"]:
+                raise ValueError("附件已在其他窗口更新，请重新打开后编辑")
+            if previous and (previous["body"], previous["journal_day"], bool(previous["ai_enabled"])) == (body, day, enabled):
+                if layout != [{"id": a["id"], "position": a["position"]} for a in media["attachments"]]:
+                    self.save_media_layout(db, previous["id"], previous["revision"], layout)
+                return {**dict(previous), **self.media_for(previous["id"], db)}
             identifier = previous["id"] if previous else payload.get("id", uid())
             if not isinstance(identifier, str) or len(identifier) > 80:
                 raise ValueError("无效的记录编号")
@@ -182,6 +197,7 @@ class Store(GrowthMixin, AboutMixin):
                        (identifier, body.strip(), day, zone, previous["created_at"] if previous else stamp, stamp, revision, enabled))
             db.execute("INSERT INTO entry_versions VALUES(?,?,?,?,?,?,?)",
                        (identifier, revision, body.strip(), day, zone, enabled, stamp))
+            self.save_media_layout(db, identifier, revision, layout)
             db.execute("DELETE FROM analyses WHERE entry_id=?", (identifier,))
             db.execute("DELETE FROM daily_summaries WHERE day=?", (day,))
             if previous:
@@ -195,7 +211,7 @@ class Store(GrowthMixin, AboutMixin):
             self.enqueue(db, "day", day)
             if previous and previous["journal_day"] != day:
                 self.enqueue(db, "day", previous["journal_day"])
-            return dict(db.execute("SELECT * FROM entries WHERE id=?", (identifier,)).fetchone())
+            return {**dict(db.execute("SELECT * FROM entries WHERE id=?", (identifier,)).fetchone()), **self.media_for(identifier, db)}
 
     @staticmethod
     def clean_orphan_actions(db):
@@ -214,6 +230,7 @@ class Store(GrowthMixin, AboutMixin):
             db.execute("DELETE FROM jobs WHERE kind='entry' AND target=?", (identifier,))
             self.clean_orphan_actions(db)
             self.enqueue(db, "day", row[0])
+        self.collect_media()
 
     def entries(self, day=None, query=""):
         with self.connection() as db:
@@ -233,6 +250,7 @@ class Store(GrowthMixin, AboutMixin):
             result = []
             for r in db.execute(sql, args):
                 item = dict(r)
+                item.update(self.media_for(item["id"], db))
                 item["analysis"] = json.loads(item["analysis"]) if item["analysis"] else None
                 item["summary_redundant"] = bool(item["analysis"] and automatic(self.settings(db)) and near_original(
                     item["analysis"]["summary"], item["body"], self.settings(db)["original_similarity"]))
@@ -348,16 +366,18 @@ class Store(GrowthMixin, AboutMixin):
     def export(self):
         with self.connection() as db:
             tables = {table: [dict(r) for r in db.execute("SELECT * FROM " + table)] for table in
-                      ("entries", "entry_versions", "analyses", "actions", "action_sources", "action_history", "daily_summaries") + ABOUT_TABLES + GROWTH_TABLES}
+                      ("entries", "entry_versions", "analyses", "actions", "action_sources", "action_history", "daily_summaries") + ABOUT_TABLES + GROWTH_TABLES + MEDIA_TABLES}
+            referenced = {r["attachment_id"] for r in tables["entry_media"]}
+            tables["attachments"] = [a for a in tables["attachments"] if a["id"] in referenced]
             if self.settings(db)["growth_enabled"]:
                 tables["memory_permissions"] = [{"entry_id": r["id"].split(":", 1)[1]} for r in self.about_records(db) if r["type"] == "entry"]
-            return {"format": "shiguang-diary", "schema_version": 3, "exported_at": now(), "tables": tables,
+            return {"format": "shiguang-diary", "schema_version": 4, "exported_at": now(), "tables": tables,
                     "preferences": {k: v for k, v in self.settings(db).items() if k in ("timezone", "backup_keep")}}
 
-    def validate_import(self, data):
+    def validate_import(self, data, media_root=None):
         data = self.normalize_bundle(data)
         tables = data.get("tables")
-        expected = ("entries", "entry_versions", "analyses", "actions", "action_sources", "action_history", "daily_summaries") + ABOUT_TABLES + GROWTH_TABLES
+        expected = ("entries", "entry_versions", "analyses", "actions", "action_sources", "action_history", "daily_summaries") + ABOUT_TABLES + GROWTH_TABLES + MEDIA_TABLES
         if not isinstance(tables, dict) or set(tables) != set(expected):
             raise ValueError("备份表结构不完整")
         # Validate in a scratch database: real constraints, types and references must hold.
@@ -377,7 +397,7 @@ class Store(GrowthMixin, AboutMixin):
             for e in tables["entries"]:
                 day_valid(e["journal_day"])
                 tzinfo(e["timezone"])
-                if not isinstance(e["body"], str) or not e["body"].strip() or len(e["body"]) > 60000 or not isinstance(e["revision"], int) or e["revision"] < 1:
+                if not isinstance(e["body"], str) or len(e["body"]) > 60000 or not isinstance(e["revision"], int) or e["revision"] < 1:
                     raise ValueError("备份包含无效记录")
                 datetime.fromisoformat(e["created_at"])
                 datetime.fromisoformat(e["updated_at"])
@@ -386,7 +406,7 @@ class Store(GrowthMixin, AboutMixin):
             for v in tables["entry_versions"]:
                 day_valid(v["journal_day"])
                 tzinfo(v["timezone"])
-                if not isinstance(v["body"], str) or not v["body"].strip() or len(v["body"]) > 60000:
+                if not isinstance(v["body"], str) or len(v["body"]) > 60000:
                     raise ValueError("备份历史原文无效")
             versions = {(v["entry_id"], v["revision"]): v["body"] for v in tables["entry_versions"]}
             for e in tables["entries"]:
@@ -421,6 +441,7 @@ class Store(GrowthMixin, AboutMixin):
                 json.loads(h["after_data"])
             self.validate_about_import(tables)
             self.validate_growth_import(tables)
+            self.validate_media_import(tables, media_root)
         except (sqlite3.Error, TypeError, KeyError, AttributeError, UnboundLocalError) as exc:
             raise ValueError("备份数据损坏或关联不完整") from exc
         finally:
@@ -428,16 +449,31 @@ class Store(GrowthMixin, AboutMixin):
         with self.connection() as db:
             conflicts = 0
             duplicate = 0
+            incoming_heads = {}
+            incoming_refs = {}
+            incoming_files = {a["id"]: a for a in tables["attachments"]}
+            for version in tables["media_versions"]:
+                if version["revision"] > incoming_heads.get(version["entry_id"], 0):
+                    incoming_heads[version["entry_id"]] = version["revision"]
+            for ref in tables["entry_media"]:
+                incoming_refs.setdefault((ref["entry_id"], ref["revision"]), []).append(ref)
+            def media_signature(rows):
+                return [tuple(row[k] for k in ("id", "position", "sha256", "size", "mime", "name")) for row in rows]
             for e in tables["entries"]:
                 current = db.execute("SELECT * FROM entries WHERE id=?", (e["id"],)).fetchone()
                 if current:
-                    if dict(current) == e:
+                    local = self.media_for(e["id"], db)
+                    revision = incoming_heads.get(e["id"], 0)
+                    imported = [{**incoming_files[r["attachment_id"]], "position": r["position"]}
+                                for r in sorted(incoming_refs.get((e["id"], revision), []), key=lambda r: r["sequence"])]
+                    if dict(current) == e and local["media_revision"] == revision and media_signature(local["attachments"]) == media_signature(imported):
                         duplicate += 1
                     else:
                         conflicts += 1
             return {"entries": len(tables["entries"]), "new": len(tables["entries"]) - duplicate - conflicts,
                     "duplicates": duplicate, "conflicts": conflicts, "actions": len(tables["actions"]),
-                    "experiences": len(tables["experiences"]), "memories": len(tables["memories"])}
+                    "experiences": len(tables["experiences"]), "memories": len(tables["memories"]),
+                    "attachments": len(tables["attachments"]), "media_bytes": sum(a["size"] for a in tables["attachments"])}
 
     def import_data(self, data, replace=False):
         data = self.normalize_bundle(data)
@@ -446,7 +482,7 @@ class Store(GrowthMixin, AboutMixin):
         tables = data["tables"]
         with self.connection() as db:
             if replace:
-                for table in ("growth_receipts", "memory_exclusions", "personal_reports", "memory_suppressions", "memory_sources", "memories", "memory_permissions", "experiences",
+                for table in ("entry_media", "media_versions", "attachments", "growth_receipts", "memory_exclusions", "personal_reports", "memory_suppressions", "memory_sources", "memories", "memory_permissions", "experiences",
                               "jobs", "daily_summaries", "action_history", "action_sources", "actions", "analyses", "entry_versions", "entries"):
                     db.execute("DELETE FROM " + table)
             # Merge deliberately preserves local conflicts, including task user overrides.
@@ -474,6 +510,20 @@ class Store(GrowthMixin, AboutMixin):
                             continue
                     columns = list(row)
                     db.execute("INSERT OR IGNORE INTO " + table + "(" + ",".join(columns) + ") VALUES(" + ",".join("?" for _ in columns) + ")", list(row.values()))
+            attachment_map = {}
+            for row in tables["attachments"]:
+                current = db.execute("SELECT * FROM attachments WHERE id=?", (row["id"],)).fetchone()
+                identifier = row["id"]
+                if current and dict(current) != row:
+                    identifier = uuid.uuid4().hex
+                attachment_map[row["id"]] = identifier
+                db.execute("INSERT OR IGNORE INTO attachments VALUES(?,?,?,?,?,?,?,?)", tuple(({**row, "id": identifier})[k] for k in ("id", "sha256", "size", "mime", "extension", "name", "created_at", "published")))
+            for table in ("media_versions", "entry_media"):
+                for original in tables[table]:
+                    if original["entry_id"] in skip_ids: continue
+                    row = dict(original)
+                    if table == "entry_media": row["attachment_id"] = attachment_map[row["attachment_id"]]
+                    db.execute("INSERT INTO " + table + " VALUES(" + ",".join("?" for _ in row) + ")", list(row.values()))
             skipped_experiences = {r[0] for r in db.execute("SELECT id FROM experiences")}
             memory_map = {}
             for table in ABOUT_TABLES + GROWTH_TABLES:
@@ -522,14 +572,15 @@ class Store(GrowthMixin, AboutMixin):
         with self.lock:
             settings = self.settings()
             today = self.today()
-            if not force and settings["last_backup_at"].startswith(today):
-                return None
             folder = Path(settings["backup_dir"] or self.directory / "backups").expanduser().resolve()
-            folder.mkdir(parents=True, exist_ok=True)
             name = "shiguang-" + datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f") + "-" + label + ".sqlite3"
             destination = folder / name
             temporary = folder / (name + ".partial")
             try:
+                self.mirror_media(folder)
+                if not force and settings["last_backup_at"].startswith(today):
+                    return None
+                folder.mkdir(parents=True, exist_ok=True)
                 source = sqlite3.connect(self.path)
                 target = sqlite3.connect(temporary)
                 try:
@@ -569,19 +620,24 @@ class Store(GrowthMixin, AboutMixin):
             if source.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
                 raise ValueError("备份未通过完整性检查")
             version = source.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (1, 2, 3):
+            if version not in (1, 2, 3, 4):
                 raise ValueError("备份来自不支持的数据版本")
             names = tuple(self.export()["tables"])
             if version == 1:
-                names = tuple(t for t in names if t not in ABOUT_TABLES + GROWTH_TABLES)
+                names = tuple(t for t in names if t not in ABOUT_TABLES + GROWTH_TABLES + MEDIA_TABLES)
             elif version == 2:
-                names = tuple(t for t in names if t not in GROWTH_TABLES)
+                names = tuple(t for t in names if t not in GROWTH_TABLES + MEDIA_TABLES)
+            elif version == 3:
+                names = tuple(t for t in names if t not in MEDIA_TABLES)
             bundle = {"format": "shiguang-diary", "schema_version": version, "tables": {t: [dict(r) for r in source.execute("SELECT * FROM " + t)] for t in names}}
-            if version == 3:
+            if version >= 3:
                 auto = source.execute("SELECT value FROM settings WHERE key='growth_enabled'").fetchone()
                 if auto and json.loads(auto[0]):
                     bundle["tables"]["memory_permissions"] = [{"entry_id": r[0]} for r in source.execute(
                         "SELECT id FROM entries WHERE ai_enabled=1 AND NOT EXISTS(SELECT 1 FROM memory_exclusions x WHERE x.entry_id=entries.id)")]
+            if version == 4:
+                bundle["tables"]["attachments"] = [a for a in bundle["tables"]["attachments"] if a["id"] in {m["attachment_id"] for m in bundle["tables"]["entry_media"]}]
+                self.restore_media_files(bundle, folder / "media")
             return self.import_data(bundle, replace=True)
         finally:
             source.close()

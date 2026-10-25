@@ -13,7 +13,9 @@
 | 表 | 用途与约束 |
 | --- | --- |
 | entries | 原文、创建/更新时间、所属日、时区、版本、AI 纳入开关 |
-| entry_versions | 每次用户保存的历史，记录 ID + 版本唯一 |
+| entry_versions | 每次文字保存的历史，记录 ID + 版本唯一 |
+| attachments | 原件元数据，内容哈希定位本机文件，独立的不透明访问编号 |
+| media_versions / entry_media | 附件排布历史，关联对应文字版本；Unicode 码点位置与排序 |
 | analyses | 当前版本的结构化分析，过期版本不可写回 |
 | actions | 独立行动状态、类型、期限、归一化指纹、用户修改标识 |
 | action_sources | 行动与记录的多对多关联，保留版本及引用 |
@@ -22,7 +24,9 @@
 | jobs | 持久化队列，同类型/目标唯一，任务票据随重新入队更新 |
 | settings | 非密钥配置；密钥单独由 Windows DPAPI 保护 |
 
-每次连接启用外键，使用参数化查询与事务。日记数据库版本为 3；v1 / v2 升级前创建快照，拒绝更高版本。`growth_receipts` 保存分片结果与进度，`memory_exclusions` 保存自动积累的单条排除。备份使用 SQLite backup API、临时文件、完整性检查、原子替换。个人档案的关系与撤回机制见[档案设计](personal-archive.md)。
+每次连接启用外键，使用参数化查询与事务。日记数据库版本为 4；v1–v3 升级前创建快照，拒绝更高版本。`growth_receipts` 保存分片结果与进度，`memory_exclusions` 保存自动积累的单条排除。备份使用 SQLite backup API、临时文件、完整性检查、原子替换。个人档案的关系与撤回机制见[档案设计](personal-archive.md)。
+
+附件采用 SQLite 元数据 + 不可变原件文件，独立版本避免增删照片触发付费文字分析；备份镜像与便携 ZIP 负责保留原件，见[媒体与备份设计](media.md)。
 
 ## 分析流程
 
