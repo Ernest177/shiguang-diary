@@ -82,7 +82,7 @@ class AboutTests(unittest.TestCase):
         item=state["reports"]["portrait"]["data"]["items"][0]
         self.assertEqual(item["certainty"],"hypothesis")
         self.assertEqual(item["period"],"2026-10")
-        self.assertEqual(state["reports"]["portrait"]["prompt_version"],"portrait.v2")
+        self.assertEqual(state["reports"]["portrait"]["prompt_version"],"portrait.v3")
 
     def test_user_correction_survives_regeneration_and_reaches_portrait(self):
         self.experience()

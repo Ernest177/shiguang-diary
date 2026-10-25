@@ -3,6 +3,8 @@ from copy import deepcopy
 
 from app.about import signature
 from app.prompts import prompt_metadata
+from app.request_options import request_options
+from app.source_refs import SOURCE_REFS_VERSION
 
 CONTEXT_VERSION = "context.v1"
 REF_FIELDS = ("entry_id", "record_id", "action_id", "existing_action_id", "growth_record_id")
@@ -67,7 +69,8 @@ def receipt_key(kind, context, settings):
     # Include original identities: r1 in two requests must never share a result.
     return signature({"context_version": CONTEXT_VERSION, "kind": kind, "context": context,
                       "payload": payload, "prompt": prompt_metadata()[kind], "mode": settings["ai_mode"],
-                      "service": settings["ai_base_url"].rstrip("/"), "model": settings["ai_model"]})
+                      "service": settings["ai_base_url"].rstrip("/"), "model": settings["ai_model"],
+                      "request_options": request_options(settings), "source_reference_version": SOURCE_REFS_VERSION})
 
 
 def cached_result(data, key):

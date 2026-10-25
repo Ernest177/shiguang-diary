@@ -12,6 +12,7 @@ import uuid
 import zipfile
 from datetime import date, datetime, timezone
 from urllib.parse import urlencode
+from app.video import playback_metadata, remove_previews
 
 MEDIA_TABLES = ("attachments", "media_versions", "entry_media")
 MEDIA_SCHEMA = """
@@ -146,6 +147,7 @@ class MediaMixin:
             JOIN attachments a ON a.id=m.attachment_id WHERE m.entry_id=? AND m.revision=? ORDER BY sequence""", (identifier, head["revision"]))]
         day = db.execute("SELECT journal_day FROM entry_versions WHERE entry_id=? AND revision=?", (identifier, head["entry_revision"])).fetchone()[0]
         for row in rows:
+            row.update(playback_metadata(row, self.media_root() / object_name(row), self.directory))
             row.update(entry_id=identifier, media_revision=head["revision"], journal_day=day,
                        display_name=dated_name(row, day),
                        download_url="/api/media/" + row["id"] + "?" + urlencode({"download": 1, "entry": identifier, "revision": head["revision"]}))
@@ -220,6 +222,7 @@ class MediaMixin:
             if not retained:
                 try: (self.media_root() / object_name(row)).unlink(missing_ok=True)
                 except OSError: pass
+                remove_previews(self.directory, row["sha256"])
 
     def collect_media(self):
         # Current removals remain in history. Only deleting an entire diary releases its originals.
@@ -233,6 +236,7 @@ class MediaMixin:
             for row in removable:
                 try: (self.media_root() / object_name(row)).unlink(missing_ok=True)
                 except OSError: pass  # File players may still hold the handle; keep the harmless orphan.
+                remove_previews(self.directory, row["sha256"])
 
     def media_history(self, identifier):
         with self.connection() as db:

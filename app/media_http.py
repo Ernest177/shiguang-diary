@@ -6,7 +6,8 @@ import urllib.parse
 import zipfile
 from http.cookies import SimpleCookie
 
-from app.media import MAX_ARCHIVE, BLOCK
+from app.media import MAX_ARCHIVE, BLOCK, object_name
+from app.video import playback_metadata
 
 
 class MediaHandlerMixin:
@@ -83,6 +84,9 @@ class MediaHandlerMixin:
         except FileNotFoundError as exc:
             return self.send({"error": str(exc)}, 404)
         filename = store.media_download_name(row, query.get("entry"), query.get("revision")) if query.get("download") else None
+        if not filename and (query.get("preview") or query.get("poster")):
+            video, poster = self.app.video_previews.ensure(row, target)
+            return self.stream_file(poster if query.get("poster") else video, "image/jpeg" if query.get("poster") else "video/mp4", ranges=True)
         return self.stream_file(target, row["mime"], filename, ranges=True)
 
     def raw_media(self, path, query):
@@ -95,6 +99,7 @@ class MediaHandlerMixin:
         if path == "/api/media/upload":
             from app.media_naming import uninformative_name
             row = store.upload_media(self.rfile, length, query.get("name", "附件"))
+            row.update(playback_metadata(row, store.media_root() / object_name(row), store.directory))
             row["naming_candidate"] = row["mime"].startswith("image/") and uninformative_name(row["name"])
             return self.send({"attachment": row})
         if not 0 < length <= MAX_ARCHIVE:

@@ -26,9 +26,10 @@
 .journal-media .photo-open { padding:0; display:block; max-width:100%; cursor:zoom-in; border-radius:8px; overflow:hidden; }
 .journal-media img { display:block; max-width:100%; max-height:640px; width:auto; height:auto; object-fit:contain; border-radius:8px; background:var(--panel); }
 .journal-media video { display:block; width:100%; max-height:560px; border-radius:8px; background:#202820; }
+.media-playback-note { display:block; margin:8px 0; font-size:11px; color:var(--muted); }
 .journal-media figcaption { display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-top:8px; color:var(--muted); font-size:11px; line-height:1.6; }
 .journal-media figcaption a { color:var(--green); text-decoration:underline; text-underline-offset:3px; }
-.media-unplayable::after { content:"浏览器暂不支持此视频编码，可下载原件播放。"; display:block; margin-top:8px; color:var(--muted); font-size:12px; }
+.media-unplayable::after { content:"暂时无法播放视频，可下载原件查看。"; display:block; margin-top:8px; color:var(--muted); font-size:12px; }
 .photo-viewer img { display:block; max-width:100%; max-height:78vh; object-fit:contain; margin:auto; }
 .media-history { margin:20px 0; }
 .media-history summary { cursor:pointer; color:var(--green); }
@@ -1355,11 +1356,19 @@ button {
 .usage-ledger-heading h2 { font-family: var(--serif); font-size: 20px; font-weight: 400; color: var(--ink); margin: 0 0 9px; }
 .usage-ledger-heading p { font-size: 11px; line-height: 1.8; color: var(--muted); margin: 0; }
 .usage-table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
-.usage-table { width: 100%; min-width: 790px; border-collapse: collapse; text-align: left; font-size: 11px; }
+.usage-table { width: 100%; min-width: 930px; border-collapse: collapse; table-layout:fixed; text-align: left; font-size: 11px; }
 .usage-table th { background: #f3f5ed; color: #708064; font-weight: 500; padding: 14px 12px; white-space: nowrap; }
 .usage-table td { padding: 16px 12px; border-top: 1px solid #ebeee3; vertical-align: top; }
 .usage-table td > small { display: block; color: var(--muted); font-size: 10px; margin-top: 5px; }
 .usage-table .usage-number { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.usage-table col.usage-col-time { width:14%; }
+.usage-table col.usage-col-purpose { width:17%; }
+.usage-table col.usage-col-model { width:16%; }
+.usage-table col.usage-col-tokens { width:9%; }
+.usage-table col.usage-col-cost { width:14%; }
+.usage-table col.usage-col-status { width:12%; }
+.usage-table th.usage-number { text-align:right; }
+.usage-call-detail { overflow-wrap:anywhere; }
 .usage-table .usage-cost { color: var(--green); font-weight: 500; }
 .usage-time { white-space: nowrap; color: #75816c; font-variant-numeric: tabular-nums; }
 .usage-time time > span, .usage-time time > small { display: block; }

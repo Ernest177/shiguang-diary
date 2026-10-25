@@ -26,6 +26,7 @@ from app.store import Store, compact, day_valid, tzinfo
 from app.usage import UsageLedger, call_scope
 from app.media_http import MediaHandlerMixin
 from app.media_naming import MediaNamer
+from app.video import VideoPreviews
 
 ROOT = Path(__file__).resolve().parent.parent
 WEB = ROOT / "web"
@@ -38,6 +39,7 @@ class Application:
         self.usage = UsageLedger(self.store.directory)
         self.client = ModelClient(self.keys, self.usage)
         self.media_namer = MediaNamer(self.store, self.client)
+        self.video_previews = VideoPreviews(self.store.directory)
         self.worker = Worker(self.store, self.client, recap_delay=30)
         self.token = secrets.token_urlsafe(40)
         self.media_token = secrets.token_urlsafe(40)

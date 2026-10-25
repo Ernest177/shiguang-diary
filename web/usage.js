@@ -2,7 +2,7 @@
 
 const usageKindNames = {
   entry: "单条整理", day: "每日回顾", memory: "长期记忆",
-  portrait: "个人画像", month: "月度回顾", test: "连接测试", image_name: "图片命名", other: "其他请求",
+  growth: "成长片段", portrait: "个人画像", month: "月度回顾", test: "连接测试", image_name: "图片命名", other: "其他请求",
 };
 const usageStatusNames = { running: "进行中", success: "已返回", error: "请求异常", interrupted: "中断 · 用量未知" };
 const tokenText = (value) => value === null || value === undefined ? "—" : Number(value).toLocaleString("zh-CN");
@@ -80,7 +80,7 @@ function renderUsage() {
         <p>缓存单价不清楚时留空，缓存部分按标准输入价估算。${price.source === "user" ? "当前使用你填写的单价。" : data.price ? `预填价格核对于 ${escapeHTML(price.checked_at)}，参考<a href="https://help.aliyun.com/zh/model-studio/model-pricing" target="_blank" rel="noopener noreferrer">阿里云官方价格 ↗</a>。` : "当前服务与模型尚未设置单价。"}</p>
         <button class="primary-button" type="submit" ${data.model ? "" : "disabled"}>保存单价</button></form></details>
     <div class="usage-ledger-heading"><h2>请求明细</h2><p>每次模型调用单独记一行；一次整理可能包含多次调用，重试也会记录。</p></div>
-    ${data.records.length ? `<div class="usage-table-wrap"><table class="usage-table"><thead><tr><th>时间</th><th>用途 · 展开详情</th><th>模型</th><th>输入</th><th>输出</th><th>总 Token</th><th>费用估算</th><th>请求状态</th></tr></thead><tbody>${data.records.map((row) => usageRecord(row, openRows.has(row.id))).join("")}</tbody></table></div>` : `<div class="usage-empty">${icon("leaf")}<h2>让每一份用量，都有记录</h2><p>这里会自动收录之后的整理与连接测试请求。暂时无需操作。</p></div>`}
+    ${data.records.length ? `<div class="usage-table-wrap"><table class="usage-table"><colgroup><col class="usage-col-time"><col class="usage-col-purpose"><col class="usage-col-model"><col class="usage-col-tokens"><col class="usage-col-tokens"><col class="usage-col-tokens"><col class="usage-col-cost"><col class="usage-col-status"></colgroup><thead><tr><th scope="col">时间</th><th scope="col">用途 · 展开详情</th><th scope="col">模型</th><th scope="col" class="usage-number">输入</th><th scope="col" class="usage-number">输出</th><th scope="col" class="usage-number">总 Token</th><th scope="col" class="usage-number">费用估算</th><th scope="col">请求状态</th></tr></thead><tbody>${data.records.map((row) => usageRecord(row, openRows.has(row.id))).join("")}</tbody></table></div>` : `<div class="usage-empty">${icon("leaf")}<h2>让每一份用量，都有记录</h2><p>这里会自动收录之后的整理与连接测试请求。暂时无需操作。</p></div>`}
     <div class="usage-pagination"><span>${data.records.length ? `${data.offset + 1}—${data.offset + data.records.length} / ${s.requests}` : "暂无记录"}</span><div><button id="usage-prev" class="secondary-button" ${data.offset ? "" : "disabled"}>上一页</button><button id="usage-next" class="secondary-button" ${data.offset + data.records.length < s.requests ? "" : "disabled"}>下一页</button></div></div>
     <p class="usage-footnote">从本版本开始记录，仅统计本应用的调用，升级前的历史用量无法追补。“—”表示未知，不代表零。估算未包含免费额度、活动折扣及未配置的缓存优惠，实际费用以服务商账单为准。账目有独立的每日快照，也可导出明细；日记 JSON 备份不包含账目，恢复日记不会重置已发生的消耗。</p>`;
   $("#usage-refresh").onclick = () => loadUsage();

@@ -496,7 +496,7 @@ async function testAI() {
   result.classList.remove("error");
   try {
     await api("/api/ai/test", settingsPayload());
-    result.textContent = "连接成功，模型支持结构化回复";
+    result.textContent = "连接成功，基础 JSON 测试通过";
   } catch (error) {
     result.textContent = error.message;
     result.classList.add("error");

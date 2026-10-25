@@ -52,6 +52,8 @@ assert.match(html, /data-source="entry-1" data-day="2026-10-20"/);
 assert.match(html, /&lt;script&gt;unsafe&lt;\/script&gt;/);
 assert.ok(!html.includes("<script>unsafe"));
 assert.match(html, /升级前的历史用量无法追补/);
+assert.match(html, /<colgroup>/);
+assert.equal((html.match(/<th scope="col" class="usage-number">/g)||[]).length,4,'numeric headers use the same alignment as their data');
 assert.equal(vm.runInContext("moneyText(null)", sandbox), "—");
 assert.equal(vm.runInContext('moneyText("0")', sandbox), "¥0.00");
 assert.equal(vm.runInContext('moneyText("0.00000001")', sandbox), "¥0.00000001");

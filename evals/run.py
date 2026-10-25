@@ -14,6 +14,8 @@ import uuid
 
 from app import __version__
 from app.ai import ModelClient, REQUEST_OPTIONS, validate_config
+from app.request_options import request_options
+from app.source_refs import SOURCE_REFS_VERSION
 from app.prompts import ENTRY_PROMPT, DAY_PROMPT, prompt_metadata
 from app.request_context import CONTEXT_VERSION, prepare_request
 from evals.scoring import SCORER_VERSION, aggregate, gate, score_case
@@ -103,10 +105,10 @@ def evaluate(mode="contract", settings=None, key="", case_ids=None):
             "app_version": __version__, "git": revision(), "prompts": prompts,
             "corpus": {"version": corpus["version"], "sha256": digest(DATA / "cases.json")},
             "fixture_sha256": digest(DATA / "contract-responses.json") if mode == "contract" else None,
-            "scorer_version": SCORER_VERSION, "gate_version": GATE_VERSION,
+            "scorer_version": SCORER_VERSION, "gate_version": GATE_VERSION, "source_reference_version": SOURCE_REFS_VERSION,
             "selected_ids": [c["id"] for c in selected],
             "model": settings["ai_model"] if mode == "live" else "handwritten-contract-fixture",
-            "request_options": {**REQUEST_OPTIONS, "response_format": None, "enable_thinking": None, "context_version": CONTEXT_VERSION},
+            "request_options": {**request_options(settings), "response_format": None, "enable_thinking": request_options(settings).get("enable_thinking"), "context_version": CONTEXT_VERSION},
             "metrics": metrics, "gate": gate(metrics),
             "performance": {"latency_samples": len(latencies),
                             "p50_ms": latencies[(len(latencies) - 1) // 2] if latencies else None,

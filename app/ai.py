@@ -21,11 +21,17 @@ from app.action_dates import duration_deadline
 from app.usage import call_scope, usage_counts
 from app.request_context import prepare_request, receipt_key, cached_result, with_receipt
 from app.organization import ORGANIZATION_VERSION, automatic, brief_original, original_day_data, portrait_readiness
+from app.request_options import REQUEST_OPTIONS, request_options
+from app.source_refs import entry_references, day_references
 
-REQUEST_OPTIONS = {"temperature": 0.2, "stream": False}
 
 
 class AIError(Exception):
+    pass
+
+
+class AITimeout(AIError):
+    """The provider may already have accepted/billed this request; no blind retry."""
     pass
 
 
@@ -122,16 +128,17 @@ class ModelClient:
             raise AIError("AI 尚未启用")
         base = settings["ai_base_url"].rstrip("/")
         endpoint = base if base.endswith("/chat/completions") else base + "/chat/completions"
-        payload = {"model": settings["ai_model"], **REQUEST_OPTIONS,
+        restore_quotes = lambda output: output
+        if isinstance(content, dict):
+            if system == ENTRY_PROMPT: content, restore_quotes = entry_references(content)
+            elif system == DAY_PROMPT: content, restore_quotes = day_references(content)
+        payload = {"model": settings["ai_model"], **request_options(settings),
                    "messages": [{"role": "system", "content": system}, {"role": "user", "content": compact(content)}],
                    }
         if image is not None:
             payload["messages"][1]["content"] = [{"type": "text", "text": compact(content)},
                 {"type": "image_url", "image_url": {"url": image}}]
             payload["max_tokens"] = 128
-            host = urllib.parse.urlsplit(base).hostname or ""
-            if host == "dashscope.aliyuncs.com" or host.endswith(".maas.aliyuncs.com"):
-                payload["enable_thinking"] = False
         key = self.keys.get()
         headers = {"Content-Type": "application/json"}
         if key:
@@ -168,15 +175,17 @@ class ModelClient:
                                       "total_tokens": counts["total_tokens"], "cached_tokens": counts["cached_tokens"],
                                       "reasoning_tokens": counts["reasoning_tokens"]}}
                 status, error_code = "success", None
-                return output, metadata
+                return restore_quotes(output), metadata
         except urllib.error.HTTPError as exc:
             error_code = "http_" + str(exc.code)
             messages = {401: "AI 密钥无效或未授权", 403: "AI 服务拒绝访问", 404: "找不到模型或接口，请检查地址与模型名", 429: "AI 服务限流或额度不足，请稍后重试"}
             if image is not None:
                 messages[400] = "图片命名未完成（HTTP 400），请检查所选模型是否支持图片输入"
             raise AIError(messages.get(exc.code, "AI 服务暂时出错（HTTP %s）" % exc.code)) from None
-        except (urllib.error.URLError, TimeoutError, OSError):
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
             error_code = "network_or_timeout"
+            if isinstance(exc, TimeoutError) or isinstance(getattr(exc, "reason", None), TimeoutError):
+                raise AITimeout("图片命名超时；附件已保留，请保存日记" if image is not None else "AI 整理请求超时，已停止自动重试以避免重复计费；原文已保存，可手动重试") from None
             raise AIError("图片命名连接失败或超时；附件已保留，请保存日记" if image is not None else "无法连接 AI 服务或请求超时；日记已保存在本机") from None
         except (KeyError, IndexError, json.JSONDecodeError, TypeError):
             raise AIError("AI 未返回有效的结构化结果，可更换模型或重试") from None
@@ -239,13 +248,18 @@ def validate_entry(data, entry, existing):
         due_text = item.get("due_text")
         due_date = item.get("due_date")
         if due_text is not None:
-            due_text = text(due_text, 200)
-            if due_text not in entry["body"]:
-                raise AIError("AI 截止时间缺少原文依据")
+            if not isinstance(due_text, str) or not 0 < len(due_text.strip()) <= 200 or due_text.strip() not in entry["body"]:
+                # Discard an unsupported optional deadline, rather than reject otherwise
+                # grounded results or silently store an invented date.
+                due_text, due_date = None, None
+            else:
+                due_text = due_text.strip()
         if due_date is not None:
             if not due_text:
-                raise AIError("AI 日期缺少原文依据")
-            day_valid(due_date)
+                due_date = None
+            else:
+                try: day_valid(due_date)
+                except (TypeError, ValueError, OverflowError): due_date = None
         resolved = duration_deadline(entry, quote, kind)
         if resolved:
             due_text, due_date = resolved
@@ -377,7 +391,7 @@ class Worker:
             retry_at = (datetime.now(timezone.utc) + timedelta(seconds=10 * attempts)).isoformat(timespec="milliseconds")
             with store.connection() as db:
                 db.execute("UPDATE jobs SET status=?,error=?,retry_at=?,updated_at=? WHERE id=?",
-                           ("failed" if attempts >= (1 if job["kind"] in ("memory", "portrait", "month", "growth") else 3) else "queued", message[:300], retry_at, now(), job["id"]))
+                           ("failed" if isinstance(exc, AITimeout) or attempts >= (1 if job["kind"] in ("memory", "portrait", "month", "growth") else 3) else "queued", message[:300], retry_at, now(), job["id"]))
         return True
 
     def analyze_entry(self, job, settings):

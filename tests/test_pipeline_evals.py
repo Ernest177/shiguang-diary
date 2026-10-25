@@ -94,10 +94,13 @@ class PipelineEvaluationTests(unittest.TestCase):
     def test_live_adapter_totals_include_per_call_cache_and_price_without_network(self):
         def response(request, timeout):
             content = json.loads(json.loads(request.data)["messages"][-1]["content"])
+            self.assertEqual(content['source_reference_format'],'source-refs.v1')
             if "entry" in content:
-                output = {"schema_version": 1, "summary": content["entry"]["body"], "insights": [], "actions": [], "completions": []}
+                body=''.join(s['text'] for s in content['entry']['segments'])
+                output = {"schema_version": 1, "summary": body, "insights": [], "actions": [], "completions": []}
             else:
-                output = {"schema_version": 1, "overview": content["records"][0]["body"], "sections": []}
+                body=''.join(s['text'] for s in content['records'][0]['segments'])
+                output = {"schema_version": 1, "overview": body, "sections": []}
             return io.BytesIO(json.dumps({"model": "synthetic", "usage": {
                 "prompt_tokens": 100, "completion_tokens": 20, "total_tokens": 120,
                 "prompt_tokens_details": {"cached_tokens": 40}, "completion_tokens_details": {"reasoning_tokens": 4}},

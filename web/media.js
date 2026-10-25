@@ -33,12 +33,13 @@ function mediaDownloadURL(a) {
   return mediaURL(a.id) + "?" + params;
 }
 function mediaFigure(a, preview = false) {
-  const url = a.localURL || mediaURL(a.id);
+  const url = a.playback_url || a.localURL || mediaURL(a.id);
   if (!url) return "";
   const name = escapeHTML(mediaDisplayName(a, preview ? $("#entry-day").value : a.journal_day)), src = escapeHTML(url);
   return `<figure class="journal-media">${(a.mime || "").startsWith("image/")
     ? `<button type="button" class="photo-open" data-photo="${src}" data-photo-name="${name}" aria-label="放大查看 ${name}"><img src="${src}" alt="${name}" loading="lazy" decoding="async"></button>`
-    : `<video src="${src}" controls playsinline preload="metadata" aria-label="${name}"></video>`}
+    : a.playback_warning ? `<p class="media-playback-note">${escapeHTML(a.playback_warning)}</p>`
+    : `<video src="${src}" ${a.poster_url ? `poster="${escapeHTML(a.poster_url)}"` : ""} controls playsinline preload="metadata" aria-label="${name}"></video>${a.playback_url ? '<span class="media-playback-note">兼容预览 · 下载保留原始画质</span>' : ""}`}
     ${!preview && a.id ? `<figcaption title="原始文件名：${escapeHTML(a.name)}">${name}<a href="${escapeHTML(mediaDownloadURL(a))}" download>下载原件 ↗</a></figcaption>` : ""}</figure>`;
 }
 function mixedMediaHTML(body, attachments = [], preview = false) {
