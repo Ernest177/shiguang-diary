@@ -82,7 +82,8 @@ class MediaHandlerMixin:
             row, target = store.media_file(identifier)
         except FileNotFoundError as exc:
             return self.send({"error": str(exc)}, 404)
-        return self.stream_file(target, row["mime"], row["name"] if query.get("download") else None, ranges=True)
+        filename = store.media_download_name(row, query.get("entry"), query.get("revision")) if query.get("download") else None
+        return self.stream_file(target, row["mime"], filename, ranges=True)
 
     def raw_media(self, path, query):
         self.close_connection = True  # Partial/rejected bodies must never become another request.

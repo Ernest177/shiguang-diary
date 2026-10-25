@@ -108,8 +108,8 @@ function restoreDraft() {
   const draft = draftRead();
   if (draft?.body || draft?.attachments?.length) {
     $("#entry-body").value = draft.body || "";
-    if (typeof setComposerMedia === "function") setComposerMedia(draft.attachments || []);
     $("#entry-day").value = draft.day;
+    if (typeof setComposerMedia === "function") setComposerMedia(draft.attachments || []);
     $("#entry-ai").checked = draft.ai !== false;
     draftId = draft.id || crypto.randomUUID();
     state.edit = draft.edit || null;
@@ -603,7 +603,7 @@ async function selectDay(day) {
   state.month = dateAt(day);
   state.query = "";
   $("#search").value = "";
-  if (!$("#entry-body").value && !state.edit) $("#entry-day").value = day;
+  if (!$("#entry-body").value && !state.edit && !mediaHasDraft()) $("#entry-day").value = day;
   if (["settings", "actions", "about", "usage"].includes(state.view)) setView("record");
   await loadState();
 }
@@ -685,8 +685,8 @@ async function editEntry(id) {
     return;
   state.edit = entry;
   $("#entry-body").value = entry.body;
-  setComposerMedia(entry.attachments);
   $("#entry-day").value = entry.journal_day;
+  setComposerMedia(entry.attachments);
   $("#entry-ai").checked = !!entry.ai_enabled;
   $("#composer-heading").textContent = "修改这一个片段";
   $("#cancel-edit").hidden = false;

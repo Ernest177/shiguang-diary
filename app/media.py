@@ -10,7 +10,8 @@ import re
 import tempfile
 import uuid
 import zipfile
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+from urllib.parse import urlencode
 
 MEDIA_TABLES = ("attachments", "media_versions", "entry_media")
 MEDIA_SCHEMA = """
@@ -60,6 +61,18 @@ def object_name(row):
     if not isinstance(digest, str) or not re.fullmatch(r"[a-f0-9]{64}", digest) or extension not in TYPES:
         raise ValueError("附件标识无效")
     return digest[:2] + "/" + digest + extension
+
+
+def dated_name(row, journal_day):
+    """Derive a human filename from the original name and diary date, never mutate either."""
+    if not isinstance(journal_day, str) or date.fromisoformat(journal_day).isoformat() != journal_day:
+        raise ValueError("日记日期无效")
+    name = re.sub(r'[<>:"/\\|?*\x00-\x1f\x7f]', "_", row["name"]).rstrip(". ")
+    dot = name.rfind(".")
+    stem = (name[:dot] if dot > 0 else name).rstrip(". ")[:110] or "附件"
+    if re.fullmatch(r"CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9]", stem.split(".")[0], re.IGNORECASE): stem = "_" + stem
+    suffix = "_" + journal_day
+    return stem + ("" if stem.endswith(suffix) else suffix) + row["extension"]
 
 
 def copied(source, target, expected_size=None, expected_hash=None):
@@ -122,7 +135,33 @@ class MediaMixin:
         if not head: return {"attachments": [], "media_revision": 0, "media_updated_at": None}
         rows = [dict(r) for r in db.execute("""SELECT a.*,m.position,m.sequence FROM entry_media m
             JOIN attachments a ON a.id=m.attachment_id WHERE m.entry_id=? AND m.revision=? ORDER BY sequence""", (identifier, head["revision"]))]
+        day = db.execute("SELECT journal_day FROM entry_versions WHERE entry_id=? AND revision=?", (identifier, head["entry_revision"])).fetchone()[0]
+        for row in rows:
+            row.update(entry_id=identifier, media_revision=head["revision"], journal_day=day,
+                       display_name=dated_name(row, day),
+                       download_url="/api/media/" + row["id"] + "?" + urlencode({"download": 1, "entry": identifier, "revision": head["revision"]}))
         return {"attachments": rows, "media_revision": head["revision"], "media_updated_at": head["saved_at"]}
+
+    def media_download_name(self, row, entry_id=None, revision=None):
+        with self.connection() as db:
+            if revision is not None and not entry_id: raise ValueError("请选择附件所属的日记")
+            if entry_id:
+                if not isinstance(entry_id, str) or len(entry_id) > 80: raise ValueError("日记编号无效")
+                if revision is None:
+                    revision = self.media_for(entry_id, db)["media_revision"]
+                elif not isinstance(revision, (int, str)) or not str(revision).isdigit() or len(str(revision)) > 10 or int(revision) < 1:
+                    raise ValueError("附件版本无效")
+                version = db.execute("""SELECT v.journal_day FROM entry_media a JOIN media_versions m
+                    ON m.entry_id=a.entry_id AND m.revision=a.revision JOIN entry_versions v
+                    ON v.entry_id=m.entry_id AND v.revision=m.entry_revision
+                    WHERE a.attachment_id=? AND a.entry_id=? AND a.revision=?""", (row["id"], entry_id, int(revision))).fetchone()
+                if not version: raise ValueError("此日记版本中没有这个附件，请重新打开记录")
+                return dated_name(row, version[0])
+            # Old links lack context. Use a date only when every reference agrees.
+            days = {r[0] for r in db.execute("""SELECT DISTINCT v.journal_day FROM entry_media a JOIN media_versions m
+                ON m.entry_id=a.entry_id AND m.revision=a.revision JOIN entry_versions v
+                ON v.entry_id=m.entry_id AND v.revision=m.entry_revision WHERE a.attachment_id=?""", (row["id"],))}
+            return dated_name(row, next(iter(days))) if len(days) == 1 else row["name"]
 
     def media_layout(self, values, body, db):
         if not isinstance(values, list) or len(values) > 60: raise ValueError("每条日记最多添加 60 个附件")

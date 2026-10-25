@@ -14,14 +14,32 @@ function shiftedMedia(items, before, after) {
     a.position <= first ? a.position : a.position >= end ? a.position + delta : first)) }));
 }
 function mediaURL(id) { return /^[a-f0-9]{32}$/.test(id || "") ? `/api/media/${id}` : ""; }
+function mediaDisplayName(a, day) {
+  const original = a.name || "附件";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day || "")) return original;
+  const parsed = new Date(`${day}T12:00:00Z`);
+  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0,10) !== day) return original;
+  const name = original.replace(/[<>:"/\\|?*\x00-\x1f\x7f]/g, "_").replace(/[. ]+$/g, "");
+  const dot = name.lastIndexOf(".");
+  let stem = Array.from((dot > 0 ? name.slice(0,dot) : name).replace(/[. ]+$/g, "")).slice(0,110).join("") || "附件";
+  if (/^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/i.test(stem.split(".")[0])) stem = "_" + stem;
+  const extension = a.extension || (dot > 0 ? name.slice(dot).toLowerCase() : "");
+  const suffix = "_" + day;
+  return stem + (stem.endsWith(suffix) ? "" : suffix) + extension;
+}
+function mediaDownloadURL(a) {
+  const params = new URLSearchParams({download:"1"});
+  if (a.entry_id && a.media_revision) { params.set("entry",a.entry_id); params.set("revision",a.media_revision); }
+  return mediaURL(a.id) + "?" + params;
+}
 function mediaFigure(a, preview = false) {
   const url = a.localURL || mediaURL(a.id);
   if (!url) return "";
-  const name = escapeHTML(a.name || "附件"), src = escapeHTML(url);
+  const name = escapeHTML(mediaDisplayName(a, preview ? $("#entry-day").value : a.journal_day)), src = escapeHTML(url);
   return `<figure class="journal-media">${(a.mime || "").startsWith("image/")
     ? `<button type="button" class="photo-open" data-photo="${src}" data-photo-name="${name}" aria-label="放大查看 ${name}"><img src="${src}" alt="${name}" loading="lazy" decoding="async"></button>`
     : `<video src="${src}" controls playsinline preload="metadata" aria-label="${name}"></video>`}
-    ${!preview && a.id ? `<figcaption>${name}<a href="${mediaURL(a.id)}?download=1" download>下载原件 ↗</a></figcaption>` : ""}</figure>`;
+    ${!preview && a.id ? `<figcaption title="原始文件名：${escapeHTML(a.name)}">${name}<a href="${escapeHTML(mediaDownloadURL(a))}" download>下载原件 ↗</a></figcaption>` : ""}</figure>`;
 }
 function mixedMediaHTML(body, attachments = [], preview = false) {
   const points = Array.from(body || ""), items = attachments.filter(a => a.id || a.localURL)
@@ -35,7 +53,7 @@ function mixedMediaHTML(body, attachments = [], preview = false) {
   if (offset < points.length) html += `<p class="entry-body">${escapeHTML(points.slice(offset).join(""))}</p>`;
   return `<div class="journal-content">${html}</div>`;
 }
-function mediaDraft() { return composerMedia.filter(a => a.id).map(({localURL, file, error, ...a}) => a); }
+function mediaDraft() { return composerMedia.filter(a => a.id).map(({localURL, file, error, display_name, download_url, journal_day, entry_id, media_revision, ...a}) => a); }
 function mediaLayout() { return composerMedia.filter(a => a.id).map(a => ({ id:a.id, position:a.position })); }
 function mediaHasDraft() { return composerMedia.length > 0; }
 function mediaBusy() {
@@ -59,7 +77,7 @@ function renderComposerMedia() {
   $("#media-tools").hidden = !composerMedia.length;
   strip.innerHTML = composerMedia.map((a,i) => `<div class="media-item ${a.error ? "media-failed" : ""}">
     ${(a.mime || "").startsWith("image/") ? `<img src="${escapeHTML(a.localURL || mediaURL(a.id))}" alt="" loading="lazy">` : '<span class="media-video-mark" aria-hidden="true">▷</span>'}
-    <div class="media-item-info"><strong>${escapeHTML(a.name)}</strong><small>${a.error ? escapeHTML(a.error) : a.id ? `插在第 ${a.position} 字后 · ${(a.size / 1024 / 1024).toFixed(1)} MB` : "正在上传到本机…"}</small></div>
+    <div class="media-item-info"><strong title="原始文件名：${escapeHTML(a.name)}">${escapeHTML(mediaDisplayName(a, $("#entry-day").value))}</strong><small>${a.error ? escapeHTML(a.error) : a.id ? `插在第 ${a.position} 字后 · ${(a.size / 1024 / 1024).toFixed(1)} MB` : "正在上传到本机…"}</small></div>
     <div class="media-item-actions"><button type="button" data-media-move="${i}" class="text-button" title="移到当前文字光标位置">移到光标</button><button type="button" data-media-up="${i}" class="icon-button" aria-label="前移 ${escapeHTML(a.name)}" ${i === 0 ? "disabled" : ""}>↑</button><button type="button" data-media-remove="${i}" class="icon-button" aria-label="移除 ${escapeHTML(a.name)}">×</button></div></div>`).join("");
   if (preview.open) $("#media-preview-content").innerHTML = mixedMediaHTML($("#entry-body").value, composerMedia, true);
   $("#save-entry").disabled = state.saving || mediaUploading;
@@ -113,6 +131,7 @@ function initMedia() {
   input.accept = mediaAccept;
   $("#add-media").onclick = () => { if (!mediaBusy()) input.click(); };
   input.onchange = () => { addMedia(input.files); input.value = ""; };
+  $("#entry-day").addEventListener("change", renderComposerMedia);
   mediaBody = body.value;
   body.addEventListener("input", () => {
     const shifted = shiftedMedia(composerMedia, mediaBody, body.value);

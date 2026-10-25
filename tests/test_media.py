@@ -15,7 +15,7 @@ import zipfile
 from unittest.mock import patch
 
 from app.ai import Worker
-from app.media import MEDIA_TABLES, object_name
+from app.media import MEDIA_TABLES, dated_name, object_name
 from app.server import make_server
 from app.store import Store, SCHEMA
 
@@ -71,6 +71,34 @@ class MediaTests(unittest.TestCase):
         self.assertTrue(path.exists())
         self.store.discard_media(second['id'])
         self.assertFalse(path.exists())
+
+    def test_dated_filename_is_safe_and_preserves_meaningful_original_dates(self):
+        row = {'name':'密室合影_01.jpg', 'extension':'.jpg'}
+        self.assertEqual(dated_name(row, DAY), '密室合影_01_2026-10-25.jpg')
+        self.assertEqual(row['name'], '密室合影_01.jpg')
+        self.assertEqual(dated_name({**row, 'name':'毕业_2020-07-01.jpg'}, DAY), '毕业_2020-07-01_2026-10-25.jpg')
+        self.assertEqual(dated_name({**row, 'name':'密室合影_01_2026-10-25.jpg'}, DAY), '密室合影_01_2026-10-25.jpg')
+        self.assertEqual(dated_name({**row, 'name':'CON.照片<原图>.jpg'}, DAY), '_CON.照片_原图__2026-10-25.jpg')
+        with self.assertRaises(ValueError): dated_name(row, '2026-02-30')
+
+    def test_diary_date_renames_display_and_download_per_reference_and_history(self):
+        photo = self.upload(name='密室合影_01.jpg')
+        first = self.entry(attachments=[{'id':photo['id'], 'position':0}])
+        second = self.store.save_entry({'body':'补记的经历', 'journal_day':'2026-10-20', 'attachments':[{'id':photo['id'], 'position':0}]})
+        self.assertEqual(first['attachments'][0]['display_name'], '密室合影_01_2026-10-25.png')
+        self.assertEqual(second['attachments'][0]['display_name'], '密室合影_01_2026-10-20.png')
+        changed = self.store.save_entry({**first, 'journal_day':'2026-10-23'}, first['id'])
+        self.assertEqual(changed['attachments'][0]['display_name'], '密室合影_01_2026-10-23.png')
+        self.assertEqual(changed['attachments'][0]['name'], photo['name'])
+        history = self.store.media_history(first['id'])
+        self.assertEqual(history[1]['attachments'][0]['display_name'], '密室合影_01_2026-10-25.png')
+        self.assertEqual(self.store.media_download_name(photo, first['id'], 1), '密室合影_01_2026-10-25.png')
+        self.assertEqual(self.store.media_download_name(photo, first['id']), '密室合影_01_2026-10-23.png')
+        self.assertEqual(self.store.media_download_name(photo, second['id']), '密室合影_01_2026-10-20.png')
+        self.assertEqual(self.store.media_download_name(photo), photo['name'], 'ambiguous old links never invent a date')
+        self.assertEqual(len(list(self.store.media_root().rglob('*.png'))), 1)
+        self.assertEqual(self.store.media_file(photo['id'])[1].read_bytes(), PNG)
+        self.assertNotIn('display_name', self.store.export()['tables']['attachments'][0])
 
     def test_media_only_edits_preserve_analysis_jobs_receipts_and_text_revision(self):
         entry = self.entry()
@@ -160,6 +188,7 @@ class MediaTests(unittest.TestCase):
             target.restore_archive(preview['ticket'])
             entry = target.entries(DAY)[0]
             self.assertEqual(entry['attachments'][0]['mime'], 'video/mp4')
+            self.assertEqual(entry['attachments'][0]['display_name'], '合成视频_2026-10-25.mp4')
             self.assertEqual(target.media_file(photo['id'])[1].read_bytes(), PNG)
             self.assertEqual(target.media_file(video['id'])[1].read_bytes(), VIDEO)
             self.assertEqual(len(target.media_history(entry['id'])), 2)
@@ -302,6 +331,23 @@ class MediaHTTPTests(unittest.TestCase):
         self.assertEqual(error.exception.code, 400)
         with self.request('/api/media/'+attachment['id']+'?download=1', headers={'Cookie':self.cookie}) as response:
             self.assertIn("filename*=UTF-8''", response.headers['Content-Disposition'])
+
+    def test_download_name_uses_pinned_diary_version_and_rejects_unrelated_links(self):
+        store = self.server.application.store
+        photo = store.upload_media(io.BytesIO(PNG), len(PNG), '合照.png')
+        first = store.save_entry({'body':'第一次记录', 'journal_day':DAY, 'attachments':[{'id':photo['id'], 'position':0}]})
+        bound = first['attachments'][0]['download_url']
+        store.save_entry({**first, 'journal_day':'2026-10-20'}, first['id'])
+        with self.request(bound, headers={'Cookie':self.cookie}) as response:
+            self.assertIn(urllib.parse.quote('合照_2026-10-25.png'), response.headers['Content-Disposition'])
+            self.assertEqual(response.read(), PNG)
+        current = store.entries('2026-10-20')[0]['attachments'][0]['download_url']
+        with self.request(current, headers={'Cookie':self.cookie}) as response:
+            self.assertIn(urllib.parse.quote('合照_2026-10-20.png'), response.headers['Content-Disposition'])
+        for suffix in ('&entry=unrelated', '&entry='+first['id']+'&revision=bad', '&entry='+first['id']+'&revision=999'):
+            with self.assertRaises(urllib.error.HTTPError) as error:
+                self.request('/api/media/'+photo['id']+'?download=1'+suffix, headers={'Cookie':self.cookie})
+            self.assertEqual(error.exception.code, 400)
 
 
 if __name__ == '__main__': unittest.main()

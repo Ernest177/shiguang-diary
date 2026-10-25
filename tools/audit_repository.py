@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import PurePosixPath
 
-PRIVATE_PARTS={'.test-output','.demo-data','.eval-results','data','backups','日记备份','__pycache__','.venv','node_modules'}
+PRIVATE_PARTS={'.test-output','.demo-data','.eval-results','data','backups','日记备份','日记素材','__pycache__','.venv','node_modules'}
 PRIVATE_NAMES={'ai-key.dat','ai-key.tmp','runtime.json','日记应用开发提示词.md'}
 PRIVATE_DOCS={'docs/data-migration.md','docs/data-location-d.png'}
 SECRET_PATTERNS=[

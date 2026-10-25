@@ -14,6 +14,7 @@ secrets*
 **/ai-key.tmp
 **/runtime.json
 日记备份/
+日记素材/
 .demo-data/
 .eval-results/
 docs/data-location-d.png
