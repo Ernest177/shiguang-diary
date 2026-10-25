@@ -25,6 +25,7 @@ from app.ai import AIError, KeyStore, ModelClient, Worker, validate_config
 from app.store import Store, compact, day_valid, tzinfo
 from app.usage import UsageLedger, call_scope
 from app.media_http import MediaHandlerMixin
+from app.media_naming import MediaNamer
 
 ROOT = Path(__file__).resolve().parent.parent
 WEB = ROOT / "web"
@@ -36,6 +37,7 @@ class Application:
         self.keys = KeyStore(self.store.directory)
         self.usage = UsageLedger(self.store.directory)
         self.client = ModelClient(self.keys, self.usage)
+        self.media_namer = MediaNamer(self.store, self.client)
         self.worker = Worker(self.store, self.client, recap_delay=30)
         self.token = secrets.token_urlsafe(40)
         self.media_token = secrets.token_urlsafe(40)
@@ -47,7 +49,7 @@ class Application:
 
     def settings_input(self, data):
         values = self.store.settings()
-        for k in ("timezone", "ai_mode", "ai_base_url", "ai_model", "cloud_consent", "backup_keep", "backup_dir", "organization_mode", "original_similarity", "brief_entry_chars"):
+        for k in ("timezone", "ai_mode", "ai_base_url", "ai_model", "cloud_consent", "image_naming", "backup_keep", "backup_dir", "organization_mode", "original_similarity", "brief_entry_chars"):
             if k in data:
                 values[k] = data[k]
         tzinfo(values["timezone"])
@@ -64,6 +66,8 @@ class Application:
             raise ValueError("备份目录需要完整的绝对路径")
         if not isinstance(values["cloud_consent"], bool):
             raise ValueError("请确认云端传输选择")
+        if not isinstance(values["image_naming"], bool):
+            raise ValueError("请选择是否开启图片智能命名")
         if not isinstance(values["ai_base_url"], str) or len(values["ai_base_url"]) > 2000:
             raise ValueError("服务地址无效")
         values["ai_base_url"] = values["ai_base_url"].strip()
@@ -245,6 +249,8 @@ class Handler(MediaHandlerMixin, BaseHTTPRequestHandler):
             mutated = True
         elif path == "/api/media/discard":
             store.discard_media(data.get("id"))
+        elif path == "/api/media/name":
+            result = self.app.media_namer.suggest(data)
         elif path == "/api/media/restore":
             result = store.restore_archive(data.get("ticket"), replace=data.get("mode") == "replace")
         elif path == "/api/actions/update":

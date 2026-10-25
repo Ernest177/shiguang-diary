@@ -264,13 +264,13 @@ class MediaTests(unittest.TestCase):
                 db.executescript(SCHEMA.split('CREATE TABLE IF NOT EXISTS attachments')[0] + 'PRAGMA user_version=3;')
             db.close()
             target = Store(folder)
-            snapshots = list((Path(folder)/'upgrade-backups').glob('before-v4-*.sqlite3'))
+            snapshots = list((Path(folder)/'upgrade-backups').glob('before-v5-*.sqlite3'))
             self.assertEqual(len(snapshots), 1)
             with contextlib.closing(sqlite3.connect(snapshots[0])) as db: self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 3)
             bundle = target.export(); bundle['schema_version'] = 3
             for table in MEDIA_TABLES: del bundle['tables'][table]
             target.import_data(bundle, replace=True)
-            with target.connection() as db: self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 4)
+            with target.connection() as db: self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 5)
 
 
 class MediaHTTPTests(unittest.TestCase):

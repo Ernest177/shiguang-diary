@@ -78,10 +78,10 @@ CREATE TABLE IF NOT EXISTS jobs(
  id TEXT PRIMARY KEY,kind TEXT NOT NULL,target TEXT NOT NULL,revision INTEGER NOT NULL,
  status TEXT NOT NULL,attempts INTEGER NOT NULL DEFAULT 0,error TEXT,
  retry_at TEXT,updated_at TEXT NOT NULL,UNIQUE(kind,target));
-""" + ABOUT_SCHEMA + GROWTH_SCHEMA + MEDIA_SCHEMA + "\nPRAGMA user_version=4;\n"
+""" + ABOUT_SCHEMA + GROWTH_SCHEMA + MEDIA_SCHEMA + "\nPRAGMA user_version=5;\n"
 
 DEFAULTS = {"timezone": "Asia/Shanghai", "ai_mode": "off", "ai_base_url": "",
-            "ai_model": "", "cloud_consent": False, "backup_keep": 30,
+            "ai_model": "", "cloud_consent": False, "image_naming": False, "backup_keep": 30,
             "backup_dir": "", "last_backup_at": "", "backup_error": "", **GROWTH_DEFAULTS, **ORGANIZATION_DEFAULTS}
 
 
@@ -93,17 +93,18 @@ class Store(MediaMixin, GrowthMixin, AboutMixin):
         self.lock = threading.RLock()
         with self.connection() as db:
             version = db.execute("PRAGMA user_version").fetchone()[0]
-            if version > 4:
+            if version > 5:
                 raise RuntimeError("数据库来自更新的应用版本，请使用较新程序打开")
-            if version in (1, 2, 3):
+            if version in (1, 2, 3, 4):
                 folder = self.directory / "upgrade-backups"
                 folder.mkdir(exist_ok=True)
-                snapshot = folder / ("before-v4-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ") + ".sqlite3")
+                snapshot = folder / ("before-v5-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ") + ".sqlite3")
                 with contextlib.closing(sqlite3.connect(snapshot)) as target:
                     db.backup(target)
                     if target.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
                         raise RuntimeError("升级前备份未通过检查，已停止升级")
-            db.executescript("BEGIN IMMEDIATE;\n" + SCHEMA + "\nCOMMIT;")
+            migration = "ALTER TABLE entry_media ADD COLUMN label TEXT NOT NULL DEFAULT '';\n" if version == 4 else ""
+            db.executescript("BEGIN IMMEDIATE;\n" + migration + SCHEMA + "\nCOMMIT;")
             for k, v in DEFAULTS.items():
                 db.execute("INSERT OR IGNORE INTO settings VALUES(?,?)", (k, compact(v)))
             db.execute("UPDATE jobs SET status='failed',error='整理期间服务已重启，请手动重试，避免重复计费' WHERE status='running' AND kind IN ('memory','portrait','month','growth')")
@@ -159,8 +160,8 @@ class Store(MediaMixin, GrowthMixin, AboutMixin):
         with self.connection() as db:
             previous = db.execute("SELECT * FROM entries WHERE id=?", (entry_id or payload.get("id", ""),)).fetchone()
             media = self.media_for(previous["id"], db) if previous else {"attachments": [], "media_revision": 0}
-            values = payload.get("attachments", [{"id": a["id"], "position": min(a["position"], len(body))} for a in media["attachments"]])
-            layout = self.media_layout(values, body, db)
+            values = payload.get("attachments", [{"id": a["id"], "position": min(a["position"], len(body)), "label": a["label"]} for a in media["attachments"]])
+            layout = self.media_layout(values, body, db, {a["id"]: a["label"] for a in media["attachments"]})
             leading = len(body) - len(body.lstrip())
             body = body.strip()
             layout = [{**a, "position": min(len(body), max(0, a["position"] - leading))} for a in layout]
@@ -171,7 +172,7 @@ class Store(MediaMixin, GrowthMixin, AboutMixin):
             if entry_id and not previous:
                 raise ValueError("记录已不存在，请刷新后重试")
             if not entry_id and previous:
-                if previous["body"] != body or previous["journal_day"] != day or layout != [{"id": a["id"], "position": a["position"]} for a in media["attachments"]]:
+                if previous["body"] != body or previous["journal_day"] != day or layout != [{"id": a["id"], "position": a["position"], "label": a["label"]} for a in media["attachments"]]:
                     raise ValueError("保存请求重复且内容发生变化，请刷新确认已保存的记录")
                 return {**dict(previous), **media}
             if previous and payload.get("revision") != previous["revision"]:
@@ -179,7 +180,7 @@ class Store(MediaMixin, GrowthMixin, AboutMixin):
             if previous and "attachments" in payload and payload.get("media_revision") != media["media_revision"]:
                 raise ValueError("附件已在其他窗口更新，请重新打开后编辑")
             if previous and (previous["body"], previous["journal_day"], bool(previous["ai_enabled"])) == (body, day, enabled):
-                if layout != [{"id": a["id"], "position": a["position"]} for a in media["attachments"]]:
+                if layout != [{"id": a["id"], "position": a["position"], "label": a["label"]} for a in media["attachments"]]:
                     self.save_media_layout(db, previous["id"], previous["revision"], layout)
                 return {**dict(previous), **self.media_for(previous["id"], db)}
             identifier = previous["id"] if previous else payload.get("id", uid())
@@ -371,7 +372,7 @@ class Store(MediaMixin, GrowthMixin, AboutMixin):
             tables["attachments"] = [a for a in tables["attachments"] if a["id"] in referenced]
             if self.settings(db)["growth_enabled"]:
                 tables["memory_permissions"] = [{"entry_id": r["id"].split(":", 1)[1]} for r in self.about_records(db) if r["type"] == "entry"]
-            return {"format": "shiguang-diary", "schema_version": 4, "exported_at": now(), "tables": tables,
+            return {"format": "shiguang-diary", "schema_version": 5, "exported_at": now(), "tables": tables,
                     "preferences": {k: v for k, v in self.settings(db).items() if k in ("timezone", "backup_keep")}}
 
     def validate_import(self, data, media_root=None):
@@ -458,13 +459,13 @@ class Store(MediaMixin, GrowthMixin, AboutMixin):
             for ref in tables["entry_media"]:
                 incoming_refs.setdefault((ref["entry_id"], ref["revision"]), []).append(ref)
             def media_signature(rows):
-                return [tuple(row[k] for k in ("id", "position", "sha256", "size", "mime", "name")) for row in rows]
+                return [tuple(row[k] for k in ("id", "position", "sha256", "size", "mime", "name", "label")) for row in rows]
             for e in tables["entries"]:
                 current = db.execute("SELECT * FROM entries WHERE id=?", (e["id"],)).fetchone()
                 if current:
                     local = self.media_for(e["id"], db)
                     revision = incoming_heads.get(e["id"], 0)
-                    imported = [{**incoming_files[r["attachment_id"]], "position": r["position"]}
+                    imported = [{**incoming_files[r["attachment_id"]], "position": r["position"], "label": r["label"]}
                                 for r in sorted(incoming_refs.get((e["id"], revision), []), key=lambda r: r["sequence"])]
                     if dict(current) == e and local["media_revision"] == revision and media_signature(local["attachments"]) == media_signature(imported):
                         duplicate += 1
@@ -523,7 +524,7 @@ class Store(MediaMixin, GrowthMixin, AboutMixin):
                     if original["entry_id"] in skip_ids: continue
                     row = dict(original)
                     if table == "entry_media": row["attachment_id"] = attachment_map[row["attachment_id"]]
-                    db.execute("INSERT INTO " + table + " VALUES(" + ",".join("?" for _ in row) + ")", list(row.values()))
+                    db.execute("INSERT INTO " + table + "(" + ",".join(row) + ") VALUES(" + ",".join("?" for _ in row) + ")", list(row.values()))
             skipped_experiences = {r[0] for r in db.execute("SELECT id FROM experiences")}
             memory_map = {}
             for table in ABOUT_TABLES + GROWTH_TABLES:
@@ -620,7 +621,7 @@ class Store(MediaMixin, GrowthMixin, AboutMixin):
             if source.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
                 raise ValueError("备份未通过完整性检查")
             version = source.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (1, 2, 3, 4):
+            if version not in (1, 2, 3, 4, 5):
                 raise ValueError("备份来自不支持的数据版本")
             names = tuple(self.export()["tables"])
             if version == 1:
@@ -635,8 +636,9 @@ class Store(MediaMixin, GrowthMixin, AboutMixin):
                 if auto and json.loads(auto[0]):
                     bundle["tables"]["memory_permissions"] = [{"entry_id": r[0]} for r in source.execute(
                         "SELECT id FROM entries WHERE ai_enabled=1 AND NOT EXISTS(SELECT 1 FROM memory_exclusions x WHERE x.entry_id=entries.id)")]
-            if version == 4:
+            if version >= 4:
                 bundle["tables"]["attachments"] = [a for a in bundle["tables"]["attachments"] if a["id"] in {m["attachment_id"] for m in bundle["tables"]["entry_media"]}]
+                bundle = self.normalize_bundle(bundle)
                 self.restore_media_files(bundle, folder / "media")
             return self.import_data(bundle, replace=True)
         finally:

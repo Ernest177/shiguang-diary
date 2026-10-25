@@ -15,7 +15,7 @@ function shiftedMedia(items, before, after) {
 }
 function mediaURL(id) { return /^[a-f0-9]{32}$/.test(id || "") ? `/api/media/${id}` : ""; }
 function mediaDisplayName(a, day) {
-  const original = a.name || "附件";
+  const original = a.label ? a.label + (a.extension || ".jpg") : a.name || "附件";
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day || "")) return original;
   const parsed = new Date(`${day}T12:00:00Z`);
   if (!Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0,10) !== day) return original;
@@ -53,8 +53,8 @@ function mixedMediaHTML(body, attachments = [], preview = false) {
   if (offset < points.length) html += `<p class="entry-body">${escapeHTML(points.slice(offset).join(""))}</p>`;
   return `<div class="journal-content">${html}</div>`;
 }
-function mediaDraft() { return composerMedia.filter(a => a.id).map(({localURL, file, error, display_name, download_url, journal_day, entry_id, media_revision, ...a}) => a); }
-function mediaLayout() { return composerMedia.filter(a => a.id).map(a => ({ id:a.id, position:a.position })); }
+function mediaDraft() { return composerMedia.filter(a => a.id).map(({localURL, file, error, naming, naming_error, naming_candidate, name_status, display_name, download_url, journal_day, entry_id, media_revision, ...a}) => a); }
+function mediaLayout() { return composerMedia.filter(a => a.id).map(a => ({ id:a.id, position:a.position, label:a.label || "" })); }
 function mediaHasDraft() { return composerMedia.length > 0; }
 function mediaBusy() {
   if (!mediaUploading && !state.saving) return false;
@@ -77,10 +77,66 @@ function renderComposerMedia() {
   $("#media-tools").hidden = !composerMedia.length;
   strip.innerHTML = composerMedia.map((a,i) => `<div class="media-item ${a.error ? "media-failed" : ""}">
     ${(a.mime || "").startsWith("image/") ? `<img src="${escapeHTML(a.localURL || mediaURL(a.id))}" alt="" loading="lazy">` : '<span class="media-video-mark" aria-hidden="true">▷</span>'}
-    <div class="media-item-info"><strong title="原始文件名：${escapeHTML(a.name)}">${escapeHTML(mediaDisplayName(a, $("#entry-day").value))}</strong><small>${a.error ? escapeHTML(a.error) : a.id ? `插在第 ${a.position} 字后 · ${(a.size / 1024 / 1024).toFixed(1)} MB` : "正在上传到本机…"}</small></div>
-    <div class="media-item-actions"><button type="button" data-media-move="${i}" class="text-button" title="移到当前文字光标位置">移到光标</button><button type="button" data-media-up="${i}" class="icon-button" aria-label="前移 ${escapeHTML(a.name)}" ${i === 0 ? "disabled" : ""}>↑</button><button type="button" data-media-remove="${i}" class="icon-button" aria-label="移除 ${escapeHTML(a.name)}">×</button></div></div>`).join("");
+    <div class="media-item-info"><strong title="原始文件名：${escapeHTML(a.name)}">${escapeHTML(mediaDisplayName(a, $("#entry-day").value))}</strong><small>${a.error ? escapeHTML(a.error) : a.naming ? "正在识图命名 · 仅发送小尺寸预览…" : a.id ? `插在第 ${a.position} 字后 · ${(a.size / 1024 / 1024).toFixed(1)} MB` : "正在上传到本机…"}</small>${a.naming_error || a.name_status ? `<small class="media-naming-note">${escapeHTML(a.naming_error || a.name_status)}</small>` : ""}</div>
+    <div class="media-item-actions">${a.id ? `<button type="button" data-media-rename="${i}" class="text-button">改名</button>${state.settings?.image_naming && a.mime?.startsWith("image/") ? `<button type="button" data-media-name="${i}" class="text-button" title="使用已配置的视觉模型；已有结果优先读取本机缓存">识图命名</button>` : ""}` : ""}<button type="button" data-media-move="${i}" class="text-button" title="移到当前文字光标位置">移到光标</button><button type="button" data-media-up="${i}" class="icon-button" aria-label="前移 ${escapeHTML(a.name)}" ${i === 0 ? "disabled" : ""}>↑</button><button type="button" data-media-remove="${i}" class="icon-button" aria-label="移除 ${escapeHTML(a.name)}">×</button></div></div>`).join("");
   if (preview.open) $("#media-preview-content").innerHTML = mixedMediaHTML($("#entry-body").value, composerMedia, true);
   $("#save-entry").disabled = state.saving || mediaUploading;
+  const privacy = $("#media-privacy");
+  if (privacy) privacy.textContent = state.settings?.image_naming
+    ? "智能命名会向当前模型服务发送小尺寸预览图；原件留在本机。名称随日记日期更新，移除的附件仍保留在编辑历史中。"
+    : "名称随日记日期更新；原件仅保存在本机，不发送给 AI。移除的附件仍保留在编辑历史中。";
+}
+
+function mediaNamingSettingsHTML(s) {
+  return `<section class="settings-section"><h2>图片智能命名</h2><label class="consent-check"><input id="image-naming" name="image_naming" type="checkbox" ${s.image_naming ? "checked" : ""}><span>自动识别乱码或相机编号，按图片内容命名</span></label><p class="privacy-footnote">开启后，仅对需要命名的图片，向上方模型服务发送本机生成的小尺寸预览图。需要支持看图的模型；不会发送原始文件、拍摄元数据、文件名或日记正文。同一图片与模型优先复用本机缓存，实际请求计入「用量与费用」。名称可手动修改，视频暂不自动识别。</p></section>`;
+}
+async function imageNamingPreview(item) {
+  const image = new Image();
+  const loaded = new Promise((resolve, reject) => { image.onload = resolve; image.onerror = () => reject(new Error("图片暂时无法读取，可保留原名或手动改名")); });
+  image.src = item.localURL || mediaURL(item.id);
+  await loaded;
+  for (const edge of [768, 512, 384]) {
+    const ratio = Math.min(1, edge / Math.max(image.naturalWidth, image.naturalHeight));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * ratio));
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * ratio));
+    const drawing = canvas.getContext("2d");
+    drawing.fillStyle = "#ffffff"; drawing.fillRect(0,0,canvas.width,canvas.height);
+    drawing.drawImage(image,0,0,canvas.width,canvas.height);
+    const preview = canvas.toDataURL("image/jpeg", .76);
+    if (preview.startsWith("data:image/jpeg;base64,") && preview.length < 340000) return preview;
+  }
+  throw new Error("无法生成足够小的预览图，已保留原名");
+}
+function uniqueMediaLabel(label, item) {
+  const used = new Set(composerMedia.filter(a => a !== item).map(a => a.label || ""));
+  if (!used.has(label)) return label;
+  let sequence = 2;
+  while (used.has(`${label}_${String(sequence).padStart(2,"0")}`)) sequence++;
+  return `${label}_${String(sequence).padStart(2,"0")}`;
+}
+async function nameComposerMedia(item, manual = false) {
+  item.naming = true; delete item.naming_error; delete item.name_status; renderComposerMedia();
+  try {
+    const result = await api("/api/media/name", {id:item.id, manual, preview:await imageNamingPreview(item)});
+    if (!composerMedia.includes(item)) return;
+    if (result.label) {
+      item.label = uniqueMediaLabel(result.label, item);
+      item.name_status = result.cached ? "名称来自本机缓存 · 可手动修改" : "已按图片内容命名 · 可手动修改";
+    } else item.name_status = "暂未得到可靠名称，保留原名；也可手动改名";
+  } catch (error) { item.naming_error = `命名未完成，附件已保留：${error.message}`; }
+  finally { delete item.naming; renderComposerMedia(); draftWrite(); }
+}
+function editMediaName(item) {
+  showModal(`<h2>给这个片段起个名字</h2><form id="media-name-form"><div class="form-field"><label for="media-name-input">图片或视频名称</label><input id="media-name-input" maxlength="60" value="${escapeHTML(item.label || "")}" placeholder="例如：室内多人合影"><small>无需填写扩展名和日记日期。留空恢复原始名称。</small></div><p class="privacy-footnote">原始文件名：${escapeHTML(item.name)}。只调整这条日记中的名称，原件保持完整。</p><div class="modal-actions"><button type="button" class="secondary-button" data-close-modal>取消</button><button type="submit" class="primary-button">使用这个名字</button></div></form>`);
+  $("#media-name-form").onsubmit = event => {
+    event.preventDefault();
+    if (mediaBusy() || !composerMedia.includes(item)) return;
+    const label = $("#media-name-input").value.trim().replace(/\.(jpe?g|png|gif|webp|mp4|webm|mov)$/i, "").replace(/[. ]+$/g, "");
+    if (/[<>:"/\\|?*\x00-\x1f\x7f]/.test(label)) { toast("名称不能包含路径或特殊文件名符号"); return; }
+    item.label = label; delete item.naming_error; delete item.name_status;
+    renderComposerMedia(); draftWrite(); modal.close(); toast("名称已调整，保存日记后生效");
+  };
 }
 function uploadBinary(path, file, progress) {
   return new Promise((resolve, reject) => {
@@ -119,6 +175,7 @@ async function addMedia(files) {
           if (detail) detail.textContent = `正在上传到本机 · ${percent}%`;
         });
         Object.assign(item, result.attachment); delete item.file;
+        if (state.settings?.image_naming && item.naming_candidate) await nameComposerMedia(item);
       } catch(error) { item.error = error.message; }
       renderComposerMedia(); draftWrite();
     }
@@ -153,6 +210,13 @@ function initMedia() {
   $("#media-items").addEventListener("click", event => {
     const button = event.target.closest("button"); if (!button || mediaBusy()) return;
     const d = button.dataset;
+    if (d.mediaRename !== undefined) { editMediaName(composerMedia[Number(d.mediaRename)]); return; }
+    if (d.mediaName !== undefined) {
+      const item = composerMedia[Number(d.mediaName)];
+      mediaUploading = true;
+      nameComposerMedia(item, true).finally(() => { mediaUploading = false; renderComposerMedia(); });
+      return;
+    }
     if (d.mediaRemove !== undefined) {
       const [item] = composerMedia.splice(Number(d.mediaRemove), 1);
       if (item.localURL) URL.revokeObjectURL(item.localURL);

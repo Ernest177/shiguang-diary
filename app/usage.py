@@ -19,7 +19,7 @@ from app.store import tzinfo
 
 CALL_SCOPE = ContextVar("diary_call_scope", default={})
 PRICE_SOURCE = "https://help.aliyun.com/zh/model-studio/model-pricing"
-KINDS = {"entry": "单条整理", "day": "每日回顾", "memory": "长期记忆", "growth": "成长片段", "portrait": "个人画像", "month": "月度回顾", "test": "连接测试", "other": "其他请求"}
+KINDS = {"entry": "单条整理", "day": "每日回顾", "memory": "长期记忆", "growth": "成长片段", "portrait": "个人画像", "month": "月度回顾", "test": "连接测试", "image_name": "图片命名", "other": "其他请求"}
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS prices(
  provider TEXT NOT NULL,model TEXT NOT NULL,input_rate TEXT NOT NULL,output_rate TEXT NOT NULL,

@@ -345,13 +345,16 @@ class AboutMixin:
     def normalize_bundle(data):
         from app.growth import GROWTH_TABLES
         from app.media import MEDIA_TABLES
-        if not isinstance(data, dict) or data.get("format") != "shiguang-diary" or data.get("schema_version") not in (1, 2, 3, 4):
-            raise ValueError("不是受支持的拾光日记备份（格式版本 1–4）")
+        if not isinstance(data, dict) or data.get("format") != "shiguang-diary" or data.get("schema_version") not in (1, 2, 3, 4, 5):
+            raise ValueError("不是受支持的拾光日记备份（格式版本 1–5）")
         base = ("entries", "entry_versions", "analyses", "actions", "action_sources", "action_history", "daily_summaries")
         expected = set(base + (ABOUT_TABLES if data["schema_version"] >= 2 else ()) + (GROWTH_TABLES if data["schema_version"] >= 3 else ()) + (MEDIA_TABLES if data["schema_version"] >= 4 else ()))
         if not isinstance(data.get("tables"), dict) or set(data["tables"]) != expected:
             raise ValueError("备份表结构不完整")
-        return {**data, "schema_version": 4, "tables": {**{t: [] for t in ABOUT_TABLES + GROWTH_TABLES + MEDIA_TABLES}, **data["tables"]}}
+        tables = {**{t: [] for t in ABOUT_TABLES + GROWTH_TABLES + MEDIA_TABLES}, **data["tables"]}
+        if data["schema_version"] < 5 and isinstance(tables["entry_media"], list):
+            tables["entry_media"] = [{**r, "label": ""} if isinstance(r, dict) else r for r in tables["entry_media"]]
+        return {**data, "schema_version": 5, "tables": tables}
 
     def validate_about_import(self, tables):
         from app.about_ai import validate_portrait, validate_month

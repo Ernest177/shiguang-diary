@@ -93,7 +93,10 @@ class MediaHandlerMixin:
         self.connection.settimeout(60)
         store = self.app.store
         if path == "/api/media/upload":
-            return self.send({"attachment": store.upload_media(self.rfile, length, query.get("name", "附件"))})
+            from app.media_naming import uninformative_name
+            row = store.upload_media(self.rfile, length, query.get("name", "附件"))
+            row["naming_candidate"] = row["mime"].startswith("image/") and uninformative_name(row["name"])
+            return self.send({"attachment": row})
         if not 0 < length <= MAX_ARCHIVE:
             raise ValueError("完整备份最大 16 GB")
         folder = store.directory / "media-incoming"

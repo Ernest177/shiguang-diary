@@ -2,7 +2,7 @@
 
 const usageKindNames = {
   entry: "单条整理", day: "每日回顾", memory: "长期记忆",
-  portrait: "个人画像", month: "月度回顾", test: "连接测试", other: "其他请求",
+  portrait: "个人画像", month: "月度回顾", test: "连接测试", image_name: "图片命名", other: "其他请求",
 };
 const usageStatusNames = { running: "进行中", success: "已返回", error: "请求异常", interrupted: "中断 · 用量未知" };
 const tokenText = (value) => value === null || value === undefined ? "—" : Number(value).toLocaleString("zh-CN");

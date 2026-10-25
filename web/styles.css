@@ -10,7 +10,8 @@
 .media-item-info { min-width:0; flex:1; }
 .media-item-info strong { display:block; font-size:13px; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .media-item-info small { display:block; margin-top:5px; color:var(--muted); font-size:11px; }
-.media-item-actions { display:flex; align-items:center; gap:8px; }
+.media-item-actions { display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:8px; }
+.media-item-info .media-naming-note { color:var(--green); line-height:1.5; }
 .media-item-actions .icon-button { font-size:20px; }
 .media-failed { border-color:var(--red); }
 .media-failed small { color:var(--red); }

@@ -115,7 +115,7 @@ class ModelClient:
     def call(self, settings, system, content):
         return self.call_with_metadata(settings, system, content)[0]
 
-    def call_with_metadata(self, settings, system, content):
+    def call_with_metadata(self, settings, system, content, *, image=None):
         """One request, with usage captured before content parsing can fail."""
         validate_config(settings)
         if settings["ai_mode"] == "off":
@@ -125,6 +125,13 @@ class ModelClient:
         payload = {"model": settings["ai_model"], **REQUEST_OPTIONS,
                    "messages": [{"role": "system", "content": system}, {"role": "user", "content": compact(content)}],
                    }
+        if image is not None:
+            payload["messages"][1]["content"] = [{"type": "text", "text": compact(content)},
+                {"type": "image_url", "image_url": {"url": image}}]
+            payload["max_tokens"] = 128
+            host = urllib.parse.urlsplit(base).hostname or ""
+            if host == "dashscope.aliyuncs.com" or host.endswith(".maas.aliyuncs.com"):
+                payload["enable_thinking"] = False
         key = self.keys.get()
         headers = {"Content-Type": "application/json"}
         if key:
@@ -141,7 +148,7 @@ class ModelClient:
         raw_usage, returned_model = {}, None
         status, error_code = "error", "invalid_response"
         try:
-            with opener.open(request, timeout=75) as response:
+            with opener.open(request, timeout=25 if image is not None else 75) as response:
                 raw = response.read(2_000_001)
                 if len(raw) > 2_000_000:
                     raise AIError("AI 响应过大，请使用更简洁的模型输出")
@@ -165,10 +172,12 @@ class ModelClient:
         except urllib.error.HTTPError as exc:
             error_code = "http_" + str(exc.code)
             messages = {401: "AI 密钥无效或未授权", 403: "AI 服务拒绝访问", 404: "找不到模型或接口，请检查地址与模型名", 429: "AI 服务限流或额度不足，请稍后重试"}
+            if image is not None:
+                messages[400] = "图片命名未完成（HTTP 400），请检查所选模型是否支持图片输入"
             raise AIError(messages.get(exc.code, "AI 服务暂时出错（HTTP %s）" % exc.code)) from None
         except (urllib.error.URLError, TimeoutError, OSError):
             error_code = "network_or_timeout"
-            raise AIError("无法连接 AI 服务或请求超时；日记已保存在本机") from None
+            raise AIError("图片命名连接失败或超时；附件已保留，请保存日记" if image is not None else "无法连接 AI 服务或请求超时；日记已保存在本机") from None
         except (KeyError, IndexError, json.JSONDecodeError, TypeError):
             raise AIError("AI 未返回有效的结构化结果，可更换模型或重试") from None
         finally:

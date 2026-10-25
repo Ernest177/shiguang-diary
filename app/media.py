@@ -24,11 +24,13 @@ CREATE TABLE IF NOT EXISTS media_versions(
  FOREIGN KEY(entry_id,entry_revision) REFERENCES entry_versions(entry_id,revision) ON DELETE CASCADE);
 CREATE TABLE IF NOT EXISTS entry_media(
  entry_id TEXT NOT NULL,revision INTEGER NOT NULL,attachment_id TEXT NOT NULL REFERENCES attachments(id),
- position INTEGER NOT NULL,sequence INTEGER NOT NULL,PRIMARY KEY(entry_id,revision,sequence),
+ position INTEGER NOT NULL,sequence INTEGER NOT NULL,label TEXT NOT NULL DEFAULT '',PRIMARY KEY(entry_id,revision,sequence),
  FOREIGN KEY(entry_id,revision) REFERENCES media_versions(entry_id,revision) ON DELETE CASCADE);
 CREATE INDEX IF NOT EXISTS media_attachment_refs ON entry_media(attachment_id);
 CREATE UNIQUE INDEX IF NOT EXISTS media_version_attachment ON entry_media(entry_id,revision,attachment_id);
 CREATE INDEX IF NOT EXISTS media_objects ON attachments(sha256,extension);
+CREATE TABLE IF NOT EXISTS image_name_cache(
+ cache_key TEXT PRIMARY KEY,sha256 TEXT NOT NULL,label TEXT NOT NULL,created_at TEXT NOT NULL);
 """
 TYPES = {".jpg": "image/jpeg", ".png": "image/png", ".gif": "image/gif", ".webp": "image/webp",
          ".mp4": "video/mp4", ".webm": "video/webm", ".mov": "video/quicktime"}
@@ -67,12 +69,19 @@ def dated_name(row, journal_day):
     """Derive a human filename from the original name and diary date, never mutate either."""
     if not isinstance(journal_day, str) or date.fromisoformat(journal_day).isoformat() != journal_day:
         raise ValueError("日记日期无效")
-    name = re.sub(r'[<>:"/\\|?*\x00-\x1f\x7f]', "_", row["name"]).rstrip(". ")
+    original = row.get("label") + row["extension"] if row.get("label") else row["name"]
+    name = re.sub(r'[<>:"/\\|?*\x00-\x1f\x7f]', "_", original).rstrip(". ")
     dot = name.rfind(".")
     stem = (name[:dot] if dot > 0 else name).rstrip(". ")[:110] or "附件"
     if re.fullmatch(r"CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9]", stem.split(".")[0], re.IGNORECASE): stem = "_" + stem
     suffix = "_" + journal_day
     return stem + ("" if stem.endswith(suffix) else suffix) + row["extension"]
+
+
+def media_label(value):
+    if not isinstance(value, str) or len(value) > 60 or re.search(r'[<>:"/\\|?*\x00-\x1f\x7f]', value):
+        raise ValueError("图片名称最多 60 个字，不能包含路径或特殊文件名符号")
+    return value.strip().rstrip(". ")
 
 
 def copied(source, target, expected_size=None, expected_hash=None):
@@ -133,7 +142,7 @@ class MediaMixin:
                           ("AND revision=?" if revision is not None else "ORDER BY revision DESC LIMIT 1"),
                           (identifier, revision) if revision is not None else (identifier,)).fetchone()
         if not head: return {"attachments": [], "media_revision": 0, "media_updated_at": None}
-        rows = [dict(r) for r in db.execute("""SELECT a.*,m.position,m.sequence FROM entry_media m
+        rows = [dict(r) for r in db.execute("""SELECT a.*,m.position,m.sequence,m.label FROM entry_media m
             JOIN attachments a ON a.id=m.attachment_id WHERE m.entry_id=? AND m.revision=? ORDER BY sequence""", (identifier, head["revision"]))]
         day = db.execute("SELECT journal_day FROM entry_versions WHERE entry_id=? AND revision=?", (identifier, head["entry_revision"])).fetchone()[0]
         for row in rows:
@@ -151,19 +160,22 @@ class MediaMixin:
                     revision = self.media_for(entry_id, db)["media_revision"]
                 elif not isinstance(revision, (int, str)) or not str(revision).isdigit() or len(str(revision)) > 10 or int(revision) < 1:
                     raise ValueError("附件版本无效")
-                version = db.execute("""SELECT v.journal_day FROM entry_media a JOIN media_versions m
+                version = db.execute("""SELECT v.journal_day,a.label FROM entry_media a JOIN media_versions m
                     ON m.entry_id=a.entry_id AND m.revision=a.revision JOIN entry_versions v
                     ON v.entry_id=m.entry_id AND v.revision=m.entry_revision
                     WHERE a.attachment_id=? AND a.entry_id=? AND a.revision=?""", (row["id"], entry_id, int(revision))).fetchone()
                 if not version: raise ValueError("此日记版本中没有这个附件，请重新打开记录")
-                return dated_name(row, version[0])
+                return dated_name({**row, "label": version[1]}, version[0])
             # Old links lack context. Use a date only when every reference agrees.
-            days = {r[0] for r in db.execute("""SELECT DISTINCT v.journal_day FROM entry_media a JOIN media_versions m
+            days = {(r[0], r[1]) for r in db.execute("""SELECT DISTINCT v.journal_day,a.label FROM entry_media a JOIN media_versions m
                 ON m.entry_id=a.entry_id AND m.revision=a.revision JOIN entry_versions v
                 ON v.entry_id=m.entry_id AND v.revision=m.entry_revision WHERE a.attachment_id=?""", (row["id"],))}
-            return dated_name(row, next(iter(days))) if len(days) == 1 else row["name"]
+            if len(days) == 1:
+                day, label = next(iter(days))
+                return dated_name({**row, "label": label}, day)
+            return row["name"]
 
-    def media_layout(self, values, body, db):
+    def media_layout(self, values, body, db, previous_labels=None):
         if not isinstance(values, list) or len(values) > 60: raise ValueError("每条日记最多添加 60 个附件")
         result, seen = [], set()
         for value in values:
@@ -174,7 +186,8 @@ class MediaMixin:
             row = db.execute("SELECT * FROM attachments WHERE id=?", (identifier,)).fetchone()
             if not row or not (self.media_root() / object_name(dict(row))).is_file():
                 raise ValueError("附件尚未上传完成或已不存在，请重新选择")
-            result.append({"id": identifier, "position": position}); seen.add(identifier)
+            label = value.get("label", (previous_labels or {}).get(identifier, ""))
+            result.append({"id": identifier, "position": position, "label": media_label(label)}); seen.add(identifier)
         return result
 
     def save_media_layout(self, db, identifier, entry_revision, layout):
@@ -183,7 +196,7 @@ class MediaMixin:
         revision = previous["media_revision"] + 1
         db.execute("INSERT INTO media_versions VALUES(?,?,?,?)", (identifier, revision, entry_revision, timestamp()))
         for sequence, item in enumerate(layout):
-            db.execute("INSERT INTO entry_media VALUES(?,?,?,?,?)", (identifier, revision, item["id"], item["position"], sequence))
+            db.execute("INSERT INTO entry_media VALUES(?,?,?,?,?,?)", (identifier, revision, item["id"], item["position"], sequence, item["label"]))
             db.execute("UPDATE attachments SET published=1 WHERE id=?", (item["id"],))
 
     def media_file(self, identifier):
@@ -202,6 +215,7 @@ class MediaMixin:
                 if not row: return
                 row = dict(row)
                 db.execute("DELETE FROM attachments WHERE id=?", (identifier,))
+                db.execute("DELETE FROM image_name_cache WHERE sha256 NOT IN (SELECT sha256 FROM attachments)")
                 retained = db.execute("SELECT 1 FROM attachments WHERE sha256=? AND extension=?", (row["sha256"], row["extension"])).fetchone()
             if not retained:
                 try: (self.media_root() / object_name(row)).unlink(missing_ok=True)
@@ -213,6 +227,7 @@ class MediaMixin:
             with self.connection() as db:
                 rows = [dict(r) for r in db.execute("SELECT * FROM attachments WHERE published=1 AND NOT EXISTS(SELECT 1 FROM entry_media WHERE attachment_id=attachments.id)")]
                 db.execute("DELETE FROM attachments WHERE published=1 AND NOT EXISTS(SELECT 1 FROM entry_media WHERE attachment_id=attachments.id)")
+                db.execute("DELETE FROM image_name_cache WHERE sha256 NOT IN (SELECT sha256 FROM attachments)")
                 removable = [r for r in rows if not db.execute("SELECT 1 FROM attachments WHERE sha256=? AND extension=?", (r["sha256"], r["extension"])).fetchone()]
             # A failed database commit must never delete a still-referenced original.
             for row in removable:
@@ -245,6 +260,7 @@ class MediaMixin:
             datetime.fromisoformat(version["saved_at"])
             if version["revision"] > heads.get(version["entry_id"], {}).get("revision", 0): heads[version["entry_id"]] = version
         for ref in tables["entry_media"]:
+            if media_label(ref["label"]) != ref["label"]: raise ValueError("备份附件名称无效")
             version = versions[(ref["entry_id"], ref["revision"])]
             body = bodies[(ref["entry_id"], version["entry_revision"])]
             if isinstance(ref["position"], bool) or not isinstance(ref["position"], int) or not 0 <= ref["position"] <= len(body) or isinstance(ref["sequence"], bool) or not isinstance(ref["sequence"], int) or ref["sequence"] < 0:
